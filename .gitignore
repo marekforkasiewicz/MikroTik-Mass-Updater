@@ -3,6 +3,10 @@ log/
 *.log
 menu_debug.log
 
+# Runtime data
+data/
+*.db
+
 # Reports
 report_*.txt
 

@@ -1,0 +1,22 @@
+"""Configuration constants for MikroTik Mass Updater"""
+
+# Connection settings
+MIN_CONNECTION_TIMEOUT = 30
+MAX_RETRY_ATTEMPTS = 3
+RETRY_DELAY_SECONDS = 5
+DEFAULT_API_PORT = 8728
+SSH_PORT = 22
+
+# Update settings
+DEFAULT_UPDATE_CHECK_ATTEMPTS = 15
+UPDATE_CHECK_DELAY = 2.0
+REBOOT_SCRIPT_NAME = "mkmassupdate_reboot"
+
+# Scan settings
+PING_TIMEOUT = 2
+PORT_CHECK_TIMEOUT = 2
+DEFAULT_SCAN_THREADS = 10
+
+# Application settings
+DEFAULT_THREADS = 5
+DEFAULT_TIMEOUT = 30

@@ -1,0 +1,35 @@
+version: '3.8'
+
+services:
+  mikrotik-updater:
+    build:
+      context: ..
+      dockerfile: docker/Dockerfile
+    container_name: mikrotik-updater
+    ports:
+      - "8080:8000"
+    volumes:
+      - ../data:/app/data
+      - ../list.txt:/app/list.txt:ro
+    environment:
+      - DATABASE_URL=sqlite:///./data/mikrotik.db
+      - LOG_LEVEL=INFO
+    restart: unless-stopped
+    # Use host network for access to local network routers
+    # Comment out 'ports' and uncomment 'network_mode' for local network access
+    # network_mode: host
+
+  # Alternative: Run with host network mode
+  # mikrotik-updater-host:
+  #   build:
+  #     context: ..
+  #     dockerfile: docker/Dockerfile
+  #   container_name: mikrotik-updater-host
+  #   network_mode: host
+  #   volumes:
+  #     - ../data:/app/data
+  #     - ../list.txt:/app/list.txt:ro
+  #   environment:
+  #     - DATABASE_URL=sqlite:///./data/mikrotik.db
+  #     - LOG_LEVEL=INFO
+  #   restart: unless-stopped
