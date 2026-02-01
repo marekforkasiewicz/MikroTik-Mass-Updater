@@ -15,8 +15,61 @@ from ..services.scan_service import ScanService
 from ..services.router_service import RouterService, HostInfo
 from ..core.enums import TaskStatus, TaskType
 from ..config import settings
+import re
 
 router = APIRouter(prefix="/scan", tags=["scan"])
+
+
+def _parse_version(version_str: str) -> tuple:
+    """
+    Parse MikroTik version string into comparable tuple.
+    Examples: 7.21.2, 7.22beta6, 7.21rc6
+    Returns tuple: (major, minor, patch, prerelease_type, prerelease_num)
+    prerelease_type: 0=stable, -1=rc, -2=beta, -3=alpha
+    """
+    if not version_str:
+        return (0, 0, 0, 0, 0)
+
+    # Remove any extra text after version (like "(testing) 2026-01-09...")
+    version_str = version_str.split()[0] if ' ' in version_str else version_str
+
+    # Match version pattern: 7.21.2 or 7.22beta6 or 7.21rc6
+    match = re.match(r'^(\d+)\.(\d+)(?:\.(\d+))?(?:(alpha|beta|rc)(\d+))?', version_str, re.IGNORECASE)
+    if not match:
+        return (0, 0, 0, 0, 0)
+
+    major = int(match.group(1))
+    minor = int(match.group(2))
+    patch = int(match.group(3) or 0)
+
+    prerelease_type = 0  # stable
+    prerelease_num = 0
+
+    if match.group(4):
+        pr_type = match.group(4).lower()
+        prerelease_num = int(match.group(5))
+        if pr_type == 'alpha':
+            prerelease_type = -3
+        elif pr_type == 'beta':
+            prerelease_type = -2
+        elif pr_type == 'rc':
+            prerelease_type = -1
+
+    return (major, minor, patch, prerelease_type, prerelease_num)
+
+
+def _is_newer_version(latest: str, installed: str) -> bool:
+    """
+    Check if latest version is newer than installed version.
+    Returns True if update is available.
+    """
+    if not latest or not installed:
+        return False
+
+    latest_parsed = _parse_version(latest)
+    installed_parsed = _parse_version(installed)
+
+    return latest_parsed > installed_parsed
 
 
 def run_quick_scan_task(task_id: str, router_ids: Optional[List[int]], db_url: str):
@@ -162,11 +215,31 @@ def run_full_scan_task(task_id: str, router_ids: Optional[List[int]], db_url: st
                 router.uptime = result.uptime
                 router.last_seen = datetime.utcnow()
 
-                # Check for updates
-                if result.latest_version and result.installed_version:
-                    router.has_updates = result.latest_version != result.installed_version
+                # Check for updates - compare versions properly
+                # Use result.latest_version if available, otherwise use cached versions
+                latest_version = result.latest_version
+                if not latest_version and result.update_channel:
+                    # Get latest version for this channel from our cache
+                    from .versions import get_cached_versions
+                    try:
+                        versions = get_cached_versions()
+                        channel_info = versions.get(result.update_channel)
+                        if channel_info:
+                            latest_version = channel_info.get('version')
+                            router.latest_version = latest_version
+                    except Exception:
+                        pass
+
+                if latest_version and result.installed_version:
+                    router.has_updates = _is_newer_version(
+                        latest_version,
+                        result.installed_version
+                    )
                 if result.upgrade_firmware and result.firmware:
-                    router.has_firmware_update = result.upgrade_firmware != result.firmware
+                    router.has_firmware_update = _is_newer_version(
+                        result.upgrade_firmware,
+                        result.firmware
+                    )
             else:
                 router.is_online = False
 

@@ -252,14 +252,28 @@ class ScanService:
 
             # Get Package Update Info
             try:
+                # First, trigger update check to refresh latest-version info
+                try:
+                    api.path('/system/package/update').call('check-for-updates')
+                    # Wait for RouterOS to fetch update info from MikroTik servers
+                    import time
+                    time.sleep(2)
+                except Exception as e:
+                    logger.debug(f"Check-for-updates failed for {host.ip}: {e}")
+
+                # Now read the update info
                 update_response = list(api.path('/system/package/update').select(
-                    'channel', 'installed-version', 'latest-version'
+                    'channel', 'installed-version', 'latest-version', 'status'
                 ))
                 if update_response:
                     upd = update_response[0]
                     result.update_channel = upd.get('channel')
                     result.installed_version = upd.get('installed-version')
                     result.latest_version = upd.get('latest-version')
+                    # Log status for debugging
+                    status = upd.get('status', '')
+                    if status:
+                        logger.debug(f"Update status for {host.ip}: {status}")
             except Exception as e:
                 logger.debug(f"Package update query failed for {host.ip}: {e}")
 

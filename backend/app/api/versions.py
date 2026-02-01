@@ -132,3 +132,13 @@ async def refresh_versions():
     _versions_cache = None
     _cache_time = None
     return await fetch_all_versions()
+
+
+def get_cached_versions() -> Dict:
+    """
+    Get cached versions synchronously (for use in background tasks).
+    Returns dict mapping channel -> version info, or empty dict if cache empty.
+    """
+    if _versions_cache and "versions" in _versions_cache:
+        return _versions_cache["versions"]
+    return {}
