@@ -140,6 +140,24 @@
                     <i class="bi bi-lightning"></i>
                   </button>
                   <button
+                    class="btn btn-outline-warning"
+                    @click="upgradeFirmware(router)"
+                    :disabled="!router.is_online || !router.has_firmware_update || upgradingFirmware[router.id]"
+                    title="Upgrade Firmware"
+                  >
+                    <i class="bi" :class="upgradingFirmware[router.id] ? 'bi-hourglass-split spin' : 'bi-cpu'"></i>
+                    <span class="d-none d-xl-inline ms-1">FW</span>
+                  </button>
+                  <button
+                    class="btn btn-outline-success"
+                    @click="upgradeRouterOS(router)"
+                    :disabled="!router.is_online || !router.has_updates || upgradingRouterOS[router.id]"
+                    title="Upgrade RouterOS"
+                  >
+                    <i class="bi" :class="upgradingRouterOS[router.id] ? 'bi-hourglass-split spin' : 'bi-arrow-up-circle'"></i>
+                    <span class="d-none d-xl-inline ms-1">ROS</span>
+                  </button>
+                  <button
                     class="btn btn-outline-secondary"
                     @click="editRouter(router)"
                     title="Edit"
@@ -224,7 +242,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useMainStore } from '../stores/main'
-import { scanApi } from '../services/api'
+import { scanApi, taskApi } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 
 const store = useMainStore()
@@ -387,5 +405,59 @@ const formatDate = (dateStr) => {
   if (!dateStr) return 'Never'
   const date = new Date(dateStr)
   return date.toLocaleString()
+}
+
+// Upgrade functions
+const upgradingFirmware = ref({})
+const upgradingRouterOS = ref({})
+
+const upgradeFirmware = async (router) => {
+  if (!router.is_online) {
+    store.addNotification('error', `Router ${router.ip} is offline`)
+    return
+  }
+  if (!router.has_firmware_update) {
+    store.addNotification('warning', `Router ${router.ip} has no firmware update available`)
+    return
+  }
+
+  upgradingFirmware.value[router.id] = true
+  try {
+    await taskApi.startUpdate({
+      router_ids: [router.id],
+      upgrade_firmware: true,
+      dry_run: false
+    })
+    store.addNotification('success', `Firmware upgrade started for ${router.identity || router.ip}`)
+  } catch (error) {
+    store.addNotification('error', `Firmware upgrade failed: ${error.message}`)
+  } finally {
+    upgradingFirmware.value[router.id] = false
+  }
+}
+
+const upgradeRouterOS = async (router) => {
+  if (!router.is_online) {
+    store.addNotification('error', `Router ${router.ip} is offline`)
+    return
+  }
+  if (!router.has_updates) {
+    store.addNotification('warning', `Router ${router.ip} has no RouterOS update available`)
+    return
+  }
+
+  upgradingRouterOS.value[router.id] = true
+  try {
+    await taskApi.startUpdate({
+      router_ids: [router.id],
+      upgrade_firmware: false,
+      dry_run: false
+    })
+    store.addNotification('success', `RouterOS upgrade started for ${router.identity || router.ip}`)
+  } catch (error) {
+    store.addNotification('error', `RouterOS upgrade failed: ${error.message}`)
+  } finally {
+    upgradingRouterOS.value[router.id] = false
+  }
 }
 </script>
