@@ -15,7 +15,8 @@ from .api import (
     routers_router, tasks_router, scan_router, versions_router,
     auth_router, users_router, groups_router, schedules_router,
     notifications_router, backups_router, scripts_router,
-    monitoring_router, reports_router, dashboard_router, webhooks_router
+    monitoring_router, reports_router, dashboard_router, webhooks_router,
+    discovery_router
 )
 from .api.websocket import router as websocket_router
 from .services.auth_service import AuthService
@@ -122,6 +123,7 @@ app.add_middleware(
 app.include_router(routers_router, prefix=settings.API_PREFIX)
 app.include_router(tasks_router, prefix=settings.API_PREFIX)
 app.include_router(scan_router, prefix=settings.API_PREFIX)
+app.include_router(discovery_router, prefix=settings.API_PREFIX)
 app.include_router(versions_router, prefix=settings.API_PREFIX)
 app.include_router(websocket_router)
 

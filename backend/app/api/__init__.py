@@ -13,6 +13,7 @@ from .monitoring import router as monitoring_router
 from .reports import router as reports_router
 from .dashboard import router as dashboard_router
 from .webhooks import router as webhooks_router
+from .discovery import router as discovery_router
 
 __all__ = [
     "routers_router",
@@ -30,4 +31,5 @@ __all__ = [
     "reports_router",
     "dashboard_router",
     "webhooks_router",
+    "discovery_router",
 ]

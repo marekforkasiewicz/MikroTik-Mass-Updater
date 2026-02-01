@@ -302,6 +302,16 @@ export const versionsApi = {
 }
 
 // =============================================================================
+// Discovery API (MNDP)
+// =============================================================================
+export const discoveryApi = {
+  discover: (timeout = 5, force = false) =>
+    api.get('/discovery', { params: { timeout, force } }),
+  getCached: () => api.get('/discovery/cached'),
+  clearCache: () => api.post('/discovery/clear-cache')
+}
+
+// =============================================================================
 // WebSocket helpers
 // =============================================================================
 export const createTaskWebSocket = (taskId, onMessage, onError) => {

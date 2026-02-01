@@ -8,10 +8,25 @@
         <div class="card stat-card h-100">
           <div class="card-body d-flex justify-content-between align-items-center">
             <div>
-              <h6 class="text-muted mb-1">Total Routers</h6>
+              <h6 class="text-muted mb-1">Configured Routers</h6>
               <div class="stat-value">{{ store.routerStats.total }}</div>
             </div>
             <i class="bi bi-hdd-network stat-icon text-primary"></i>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-3">
+        <div class="card stat-card h-100 border-start border-info border-4" @click="runDiscovery" style="cursor: pointer;" title="Click to scan">
+          <div class="card-body d-flex justify-content-between align-items-center">
+            <div>
+              <h6 class="text-muted mb-1">Discovered (MNDP)</h6>
+              <div class="stat-value text-info">
+                <span v-if="discoveryLoading" class="spinner-border spinner-border-sm"></span>
+                <span v-else>{{ discoveredCount }}</span>
+              </div>
+            </div>
+            <i class="bi bi-broadcast stat-icon text-info"></i>
           </div>
         </div>
       </div>
@@ -24,18 +39,6 @@
               <div class="stat-value text-success">{{ store.routerStats.online }}</div>
             </div>
             <i class="bi bi-check-circle stat-icon text-success"></i>
-          </div>
-        </div>
-      </div>
-
-      <div class="col-md-3">
-        <div class="card stat-card h-100 border-start border-danger border-4">
-          <div class="card-body d-flex justify-content-between align-items-center">
-            <div>
-              <h6 class="text-muted mb-1">Offline</h6>
-              <div class="stat-value text-danger">{{ store.routerStats.offline }}</div>
-            </div>
-            <i class="bi bi-x-circle stat-icon text-danger"></i>
           </div>
         </div>
       </div>
@@ -130,6 +133,71 @@
       </div>
     </div>
 
+    <!-- Discovered Routers (MNDP) -->
+    <div class="card mb-4" v-if="discoveredRouters.length > 0">
+      <div class="card-header d-flex justify-content-between align-items-center">
+        <h5 class="mb-0">
+          <i class="bi bi-broadcast me-2"></i>
+          Discovered Routers (MNDP)
+        </h5>
+        <div>
+          <button class="btn btn-sm btn-outline-info me-2" @click="runDiscovery" :disabled="discoveryLoading">
+            <span v-if="discoveryLoading" class="spinner-border spinner-border-sm me-1"></span>
+            <i v-else class="bi bi-arrow-clockwise me-1"></i>
+            Rescan
+          </button>
+        </div>
+      </div>
+      <div class="card-body p-0">
+        <div class="table-responsive">
+          <table class="table table-hover mb-0">
+            <thead>
+              <tr>
+                <th>Identity</th>
+                <th>IP Address</th>
+                <th>MAC Address</th>
+                <th>Platform</th>
+                <th>Version</th>
+                <th>Uptime</th>
+                <th>Status</th>
+                <th>Action</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr v-for="device in discoveredRouters" :key="device.mac_address">
+                <td><strong>{{ device.identity || '-' }}</strong></td>
+                <td><code>{{ device.ipv4_address || '-' }}</code></td>
+                <td><code class="text-muted">{{ device.mac_address }}</code></td>
+                <td>{{ device.platform || device.board || '-' }}</td>
+                <td>{{ device.version || '-' }}</td>
+                <td>{{ device.uptime_formatted || '-' }}</td>
+                <td>
+                  <span v-if="isConfigured(device)" class="badge bg-success">Configured</span>
+                  <span v-else class="badge bg-secondary">New</span>
+                </td>
+                <td>
+                  <button
+                    v-if="!isConfigured(device) && device.ipv4_address"
+                    class="btn btn-sm btn-outline-primary"
+                    @click="addDiscoveredRouter(device)"
+                    :disabled="addingRouter === device.mac_address"
+                  >
+                    <span v-if="addingRouter === device.mac_address" class="spinner-border spinner-border-sm"></span>
+                    <i v-else class="bi bi-plus-circle"></i>
+                    Add
+                  </button>
+                  <span v-else-if="isConfigured(device)" class="text-success">
+                    <i class="bi bi-check-circle"></i>
+                  </span>
+                  <span v-else class="text-muted">No IP</span>
+                </td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- Running Tasks -->
     <div class="card" v-if="store.runningTasks.length > 0">
       <div class="card-header">
@@ -159,13 +227,66 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useMainStore } from '../stores/main'
+import { discoveryApi, routerApi } from '../services/api'
 
 const store = useMainStore()
 const loading = ref(false)
 
+// Discovery state
+const discoveryLoading = ref(false)
+const discoveredRouters = ref([])
+const addingRouter = ref(null)
+
+const discoveredCount = computed(() => discoveredRouters.value.length)
+
 const recentRouters = computed(() => {
   return store.routers.slice(0, 5)
 })
+
+// Check if a discovered device is already configured
+const isConfigured = (device) => {
+  if (!device.ipv4_address) return false
+  return store.routers.some(r => r.ip === device.ipv4_address)
+}
+
+// Run MNDP discovery
+const runDiscovery = async () => {
+  discoveryLoading.value = true
+  try {
+    const result = await discoveryApi.discover(5, true)
+    discoveredRouters.value = result.discovered || []
+    if (result.count > 0) {
+      store.addNotification('info', `Discovered ${result.count} MikroTik device(s)`)
+    }
+  } catch (error) {
+    console.error('Discovery failed:', error)
+    store.addNotification('error', 'Discovery failed: ' + error.message)
+  } finally {
+    discoveryLoading.value = false
+  }
+}
+
+// Add a discovered router to configured list
+const addDiscoveredRouter = async (device) => {
+  if (!device.ipv4_address) return
+
+  addingRouter.value = device.mac_address
+  try {
+    await routerApi.create({
+      ip: device.ipv4_address,
+      username: 'admin',
+      password: '',
+      port: 8728
+    })
+    await store.fetchRouters()
+    store.addNotification('success', `Added router ${device.identity || device.ipv4_address}`)
+  } catch (error) {
+    console.error('Failed to add router:', error)
+    store.addNotification('error', 'Failed to add router: ' + error.message)
+  } finally {
+    addingRouter.value = null
+  }
+}
 
 const importRouters = async () => {
   loading.value = true
@@ -193,4 +314,14 @@ const startFullScan = async () => {
     loading.value = false
   }
 }
+
+// Run discovery on mount (use cached results first)
+onMounted(async () => {
+  try {
+    const cached = await discoveryApi.getCached()
+    discoveredRouters.value = cached.discovered || []
+  } catch (error) {
+    // Ignore errors on cached fetch
+  }
+})
 </script>
