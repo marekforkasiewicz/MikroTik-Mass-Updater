@@ -3,11 +3,12 @@
 import asyncio
 import logging
 from datetime import datetime
-from typing import Optional
+from typing import Optional, Set
 
 from ..database import SessionLocal
 from ..models.router import Router
 from ..config import settings
+from .mndp_service import discover_async
 
 logger = logging.getLogger(__name__)
 
@@ -16,58 +17,37 @@ _monitoring_active = False
 _monitoring_task: Optional[asyncio.Task] = None
 
 
-async def ping_router(ip: str, timeout: float = 2.0) -> bool:
-    """Ping a router to check if it's online"""
-    try:
-        # Try TCP connection to API port (faster than ICMP ping)
-        reader, writer = await asyncio.wait_for(
-            asyncio.open_connection(ip, 8728),
-            timeout=timeout
-        )
-        writer.close()
-        await writer.wait_closed()
-        return True
-    except Exception:
-        # Fallback: try SSH port
-        try:
-            reader, writer = await asyncio.wait_for(
-                asyncio.open_connection(ip, 22),
-                timeout=timeout
-            )
-            writer.close()
-            await writer.wait_closed()
-            return True
-        except Exception:
-            return False
-
-
 async def check_all_routers():
-    """Check online status of all routers"""
+    """
+    Check online status of all routers using MNDP discovery.
+    MNDP is the source of truth - if router responds to MNDP, it's online.
+    """
     db = SessionLocal()
     try:
         routers = db.query(Router).all()
         if not routers:
             return
 
-        logger.debug(f"Auto-monitoring: checking {len(routers)} routers")
+        logger.debug(f"Auto-monitoring: checking {len(routers)} routers via MNDP")
 
-        # Check all routers concurrently
-        tasks = []
-        for router in routers:
-            tasks.append(ping_router(router.ip))
+        # Run MNDP discovery to find all online MikroTik devices
+        discovered = await discover_async(timeout=5)
 
-        results = await asyncio.gather(*tasks, return_exceptions=True)
+        # Build set of discovered IPs for fast lookup
+        discovered_ips: Set[str] = {d.ipv4_address for d in discovered if d.ipv4_address}
 
-        # Update router statuses
+        logger.debug(f"MNDP discovered {len(discovered_ips)} devices: {discovered_ips}")
+
+        # Update router statuses based on MNDP results
         updated = 0
-        for router, is_online in zip(routers, results):
-            if isinstance(is_online, Exception):
-                is_online = False
+        for router in routers:
+            is_online = router.ip in discovered_ips
 
             if router.is_online != is_online:
                 router.is_online = is_online
                 updated += 1
-                logger.info(f"Router {router.identity or router.ip} is now {'online' if is_online else 'offline'}")
+                status = 'ONLINE (MNDP)' if is_online else 'OFFLINE'
+                logger.info(f"Router {router.identity or router.ip} is now {status}")
 
             if is_online:
                 router.last_seen = datetime.utcnow()
