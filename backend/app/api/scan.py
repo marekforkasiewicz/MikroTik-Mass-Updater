@@ -390,32 +390,31 @@ def quick_scan_single(router_id: int, db: Session = Depends(get_db)):
     # If router is online with API, also fetch firmware info
     if result.port_api_open and result.has_credentials:
         try:
-            import librouteros
+            from ..services.routeros_rest import RouterOSClient
             username = host.username or settings.DEFAULT_USERNAME
             password = host.password or settings.DEFAULT_PASSWORD
-            api = librouteros.connect(
+            client = RouterOSClient(
                 host=host.ip,
                 username=username,
                 password=password,
-                port=host.port or 8728,
+                port=443,
                 timeout=10
             )
             try:
-                rb_info = list(api.path('/system/routerboard').select(
-                    'current-firmware', 'upgrade-firmware'
-                ))
-                if rb_info:
-                    router.firmware = rb_info[0].get('current-firmware')
-                    router.upgrade_firmware = rb_info[0].get('upgrade-firmware')
-                    # Only show firmware update if upgrade > current (not downgrade)
-                    if router.firmware and router.upgrade_firmware:
-                        router.has_firmware_update = _is_newer_version(
-                            router.upgrade_firmware, router.firmware
-                        )
-                    else:
-                        router.has_firmware_update = False
+                if client.connect():
+                    rb_info = client.get_routerboard()
+                    if rb_info:
+                        router.firmware = rb_info.get('current-firmware')
+                        router.upgrade_firmware = rb_info.get('upgrade-firmware')
+                        # Only show firmware update if upgrade > current (not downgrade)
+                        if router.firmware and router.upgrade_firmware:
+                            router.has_firmware_update = _is_newer_version(
+                                router.upgrade_firmware, router.firmware
+                            )
+                        else:
+                            router.has_firmware_update = False
             finally:
-                api.close()
+                client.close()
         except Exception:
             pass  # Non-critical, continue without firmware update
 
@@ -449,29 +448,31 @@ def check_firmware_status(router_id: int, db: Session = Depends(get_db)):
     )
 
     try:
-        api = RouterService.connect(
-            host,
-            settings.DEFAULT_USERNAME,
-            settings.DEFAULT_PASSWORD,
+        from ..services.routeros_rest import RouterOSClient
+        client = RouterOSClient(
+            host=router_obj.ip,
+            username=host.username or settings.DEFAULT_USERNAME,
+            password=host.password or settings.DEFAULT_PASSWORD,
+            port=443,
             timeout=15
         )
+
+        if not client.connect():
+            raise Exception("Failed to connect to router REST API")
 
         # Get firmware info
         firmware_info = {}
         try:
-            rb_response = list(api.path('/system/routerboard').select(
-                'current-firmware', 'upgrade-firmware', 'model', 'serial-number'
-            ))
-            if rb_response:
-                info = rb_response[0]
+            rb = client.get_routerboard()
+            if rb:
                 firmware_info = {
-                    'current_firmware': info.get('current-firmware'),
-                    'upgrade_firmware': info.get('upgrade-firmware'),
-                    'model': info.get('model'),
-                    'serial_number': info.get('serial-number'),
+                    'current_firmware': rb.get('current-firmware'),
+                    'upgrade_firmware': rb.get('upgrade-firmware'),
+                    'model': rb.get('model'),
+                    'serial_number': rb.get('serial-number'),
                     'needs_upgrade': _is_newer_version(
-                        info.get('upgrade-firmware'), info.get('current-firmware')
-                    ) if info.get('upgrade-firmware') and info.get('current-firmware') else False
+                        rb.get('upgrade-firmware'), rb.get('current-firmware')
+                    ) if rb.get('upgrade-firmware') and rb.get('current-firmware') else False
                 }
         except Exception as e:
             firmware_info = {'error': str(e)}
@@ -479,13 +480,13 @@ def check_firmware_status(router_id: int, db: Session = Depends(get_db)):
         # Get RouterOS version
         ros_version = None
         try:
-            resource = list(api.path('/system/resource').select('version'))
+            resource = client.get_resources()
             if resource:
-                ros_version = resource[0].get('version')
+                ros_version = resource.get('version')
         except Exception:
             pass
 
-        api.close()
+        client.close()
 
         # Update router record
         if firmware_info.get('current_firmware'):

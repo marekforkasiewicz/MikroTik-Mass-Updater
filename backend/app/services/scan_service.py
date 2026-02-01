@@ -4,14 +4,19 @@ import logging
 import subprocess
 import socket
 import asyncio
+import time
 from concurrent.futures import ThreadPoolExecutor
 from typing import List, Tuple, Optional, Callable
 from dataclasses import dataclass
 
-import librouteros
+# REST API client (replaces librouteros)
+from .routeros_rest import RouterOSClient, RouterOSException
 
 from ..core.constants import PING_TIMEOUT, PORT_CHECK_TIMEOUT, DEFAULT_API_PORT, SSH_PORT
 from .router_service import HostInfo
+
+# Default REST API port
+DEFAULT_REST_PORT = 443
 
 logger = logging.getLogger(__name__)
 
@@ -144,36 +149,38 @@ class ScanService:
             result.status = "Online (no credentials)"
             return result
 
-        # Try to get RouterOS info
-        api = None
+        # Try to get RouterOS info via REST API
+        client = None
         try:
             username = host.username or default_username
             password = host.password or default_password
 
-            api = librouteros.connect(
+            client = RouterOSClient(
                 host=host.ip,
                 username=username,
                 password=password,
-                port=host.port or DEFAULT_API_PORT,
+                port=DEFAULT_REST_PORT,
                 timeout=5
             )
 
+            if not client.connect():
+                result.status = "Online (REST API unavailable)"
+                return result
+
             # Get identity
             try:
-                identity_data = list(api.path('/system/identity').select('name'))
-                if identity_data:
-                    result.identity = identity_data[0].get('name')
+                identity_data = client.get_identity()
+                result.identity = identity_data.get('name')
             except Exception:
                 pass
 
             # Get version, memory and architecture
             try:
-                res_data = list(api.path('/system/resource').select('version', 'total-memory', 'architecture-name'))
-                if res_data:
-                    result.ros_version = res_data[0].get('version')
-                    total_mem = int(res_data[0].get('total-memory', 0))
-                    result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
-                    result.architecture = res_data[0].get('architecture-name')
+                res_data = client.get_resources()
+                result.ros_version = res_data.get('version')
+                total_mem = int(res_data.get('total-memory', 0))
+                result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                result.architecture = res_data.get('architecture-name')
             except Exception:
                 pass
 
@@ -185,9 +192,9 @@ class ScanService:
             logger.debug(f"API connection failed for {host.ip}: {e}")
 
         finally:
-            if api:
+            if client:
                 try:
-                    api.close()
+                    client.close()
                 except Exception:
                     pass
 
@@ -202,78 +209,62 @@ class ScanService:
     ) -> FullScanResult:
         """Perform full scan on a single host to gather all router information."""
         result = FullScanResult(ip=host.ip)
-        api = None
+        client = None
 
         try:
             username = host.username or default_username
             password = host.password or default_password
 
-            api = librouteros.connect(
+            client = RouterOSClient(
                 host=host.ip,
                 username=username,
                 password=password,
-                port=host.port or DEFAULT_API_PORT,
+                port=DEFAULT_REST_PORT,
                 timeout=timeout
             )
 
+            if not client.connect():
+                result.error = "Failed to connect via REST API"
+                return result
+
             # Get Identity
             try:
-                identity_response = list(api.path('/system/identity').select('name'))
-                if identity_response:
-                    result.identity = identity_response[0].get('name')
+                identity_data = client.get_identity()
+                result.identity = identity_data.get('name')
             except Exception as e:
                 logger.debug(f"Identity query failed for {host.ip}: {e}")
 
             # Get Routerboard info
             try:
-                rb_response = list(api.path('/system/routerboard').select(
-                    'board-name', 'current-firmware', 'upgrade-firmware'
-                ))
-                if rb_response:
-                    rb = rb_response[0]
-                    result.model = rb.get('board-name', rb.get('model'))
-                    result.firmware = rb.get('current-firmware')
-                    result.upgrade_firmware = rb.get('upgrade-firmware')
+                rb = client.get_routerboard()
+                result.model = rb.get('board-name', rb.get('model'))
+                result.firmware = rb.get('current-firmware')
+                result.upgrade_firmware = rb.get('upgrade-firmware')
             except Exception as e:
                 logger.debug(f"Routerboard query failed for {host.ip}: {e}")
 
             # Get System Resource
             try:
-                res_response = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
-                if res_response:
-                    res = res_response[0]
-                    result.ros_version = res.get('version')
-                    result.uptime = res.get('uptime')
-                    total_mem = int(res.get('total-memory', 0))
-                    result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
-                    result.architecture = res.get('architecture-name')
+                res = client.get_resources()
+                result.ros_version = res.get('version')
+                result.uptime = res.get('uptime')
+                total_mem = int(res.get('total-memory', 0))
+                result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                result.architecture = res.get('architecture-name')
             except Exception as e:
                 logger.debug(f"Resource query failed for {host.ip}: {e}")
 
             # Get Package Update Info
             try:
-                # First, trigger update check to refresh latest-version info
-                try:
-                    api.path('/system/package/update').call('check-for-updates')
-                    # Wait for RouterOS to fetch update info from MikroTik servers
-                    import time
-                    time.sleep(2)
-                except Exception as e:
-                    logger.debug(f"Check-for-updates failed for {host.ip}: {e}")
-
-                # Now read the update info
-                update_response = list(api.path('/system/package/update').select(
-                    'channel', 'installed-version', 'latest-version', 'status'
-                ))
-                if update_response:
-                    upd = update_response[0]
-                    result.update_channel = upd.get('channel')
-                    result.installed_version = upd.get('installed-version')
-                    result.latest_version = upd.get('latest-version')
-                    # Log status for debugging
-                    status = upd.get('status', '')
-                    if status:
-                        logger.debug(f"Update status for {host.ip}: {status}")
+                # Trigger update check and wait for result
+                upd = client.check_for_updates(wait=True, timeout=10)
+                result.update_channel = upd.get('channel')
+                result.installed_version = upd.get('installed-version')
+                result.latest_version = upd.get('latest-version')
+                # Log status for debugging
+                status = upd.get('status', '')
+                if status:
+                    logger.debug(f"Update status for {host.ip}: {status}")
             except Exception as e:
                 logger.debug(f"Package update query failed for {host.ip}: {e}")
 
@@ -284,9 +275,9 @@ class ScanService:
             logger.debug(f"Full scan failed for {host.ip}: {e}")
 
         finally:
-            if api:
+            if client:
                 try:
-                    api.close()
+                    client.close()
                 except Exception:
                     pass
 

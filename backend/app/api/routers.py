@@ -220,74 +220,55 @@ def change_update_channel(
 
             # After changing channel, connect to router and check for updates
             try:
-                import librouteros
+                from ..services.routeros_rest import RouterOSClient
                 import time
 
-                api = librouteros.connect(
+                client = RouterOSClient(
                     host=router_obj.ip,
                     username=username,
                     password=password,
-                    port=router_obj.port or 8728,
+                    port=443,
                     timeout=30
                 )
 
-                # Trigger check-for-updates
-                try:
-                    api.path('/system/package/update')('check-for-updates')
-                except Exception:
-                    pass
-
-                # Wait for check to complete
-                time.sleep(3)
-
-                # Read the new update info
-                for attempt in range(10):
+                if client.connect():
+                    # Check for updates and wait for result
                     try:
-                        update_info = list(api.path('/system/package/update').select(
-                            'channel', 'installed-version', 'latest-version', 'status'
-                        ))
+                        update_info = client.check_for_updates(wait=True, timeout=20)
                         if update_info:
-                            info = update_info[0]
-                            status = info.get('status', '').lower()
+                            installed = update_info.get('installed-version')
+                            latest = update_info.get('latest-version')
 
-                            if 'checking' not in status:
-                                installed = info.get('installed-version')
-                                latest = info.get('latest-version')
-
-                                if installed:
-                                    router_obj.installed_version = installed
-                                if latest:
-                                    router_obj.latest_version = latest
-                                    # Check if update available
-                                    router_obj.has_updates = (
-                                        latest != installed if latest and installed else False
-                                    )
-                                break
+                            if installed:
+                                router_obj.installed_version = installed
+                            if latest:
+                                router_obj.latest_version = latest
+                                # Check if update available
+                                router_obj.has_updates = (
+                                    latest != installed if latest and installed else False
+                                )
                     except Exception:
                         pass
-                    time.sleep(2)
 
-                # Also get firmware info
-                try:
-                    rb_info = list(api.path('/system/routerboard').select(
-                        'current-firmware', 'upgrade-firmware'
-                    ))
-                    if rb_info:
-                        current_fw = rb_info[0].get('current-firmware')
-                        upgrade_fw = rb_info[0].get('upgrade-firmware')
-                        if current_fw:
-                            router_obj.firmware = current_fw
-                        if upgrade_fw:
-                            router_obj.upgrade_firmware = upgrade_fw
-                        # Only show update if upgrade > current
-                        if current_fw and upgrade_fw:
-                            router_obj.has_firmware_update = _is_newer_version(upgrade_fw, current_fw)
-                        else:
-                            router_obj.has_firmware_update = False
-                except Exception:
-                    pass
+                    # Also get firmware info
+                    try:
+                        rb_info = client.get_routerboard()
+                        if rb_info:
+                            current_fw = rb_info.get('current-firmware')
+                            upgrade_fw = rb_info.get('upgrade-firmware')
+                            if current_fw:
+                                router_obj.firmware = current_fw
+                            if upgrade_fw:
+                                router_obj.upgrade_firmware = upgrade_fw
+                            # Only show update if upgrade > current
+                            if current_fw and upgrade_fw:
+                                router_obj.has_firmware_update = _is_newer_version(upgrade_fw, current_fw)
+                            else:
+                                router_obj.has_firmware_update = False
+                    except Exception:
+                        pass
 
-                api.close()
+                    client.close()
 
             except Exception as e:
                 # Non-critical - channel was changed, just couldn't refresh data

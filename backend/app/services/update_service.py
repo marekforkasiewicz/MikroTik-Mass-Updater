@@ -6,8 +6,8 @@ import socket
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
 
-import librouteros
-from librouteros.query import Key
+# REST API client (replaces librouteros)
+from .routeros_rest import RouterOSClient, RouterOSException
 
 from ..core.constants import (
     MAX_RETRY_ATTEMPTS, RETRY_DELAY_SECONDS,
@@ -112,12 +112,16 @@ class UpdateService:
             Tuple of (current_channel, matches_desired)
         """
         try:
-            response = list(api.path('/system/package/update').select('channel', 'status'))
-            if response:
-                status_info = response[0]
-                current_channel = status_info.get('channel', status_info.get('status', 'unknown'))
-                matches = desired_tree.value.lower() in current_channel.lower()
-                return current_channel, matches
+            # Check if using REST client
+            if isinstance(api, RouterOSClient):
+                status_info = api.get_update_status()
+            else:
+                response = list(api.path('/system/package/update').select('channel', 'status'))
+                status_info = response[0] if response else {}
+
+            current_channel = status_info.get('channel', status_info.get('status', 'unknown'))
+            matches = desired_tree.value.lower() in current_channel.lower()
+            return current_channel, matches
         except Exception as e:
             logger.debug(f"Error checking update tree: {e}")
 
@@ -161,6 +165,21 @@ class UpdateService:
         Returns:
             Tuple of (updates_available, installed_version, latest_version)
         """
+        # Check if using REST client
+        if isinstance(api, RouterOSClient):
+            try:
+                result = api.check_for_updates(wait=True, timeout=check_attempts * check_delay)
+                installed = result.get('installed-version')
+                latest = result.get('latest-version')
+
+                if latest and latest != installed:
+                    return True, installed, latest
+                return False, installed, latest
+            except Exception as e:
+                logger.debug(f"Error checking for updates: {e}")
+                return False, None, None
+
+        # Legacy librouteros API
         try:
             # Trigger update check
             api.path('/system/package/update')('check-for-updates')
@@ -199,6 +218,21 @@ class UpdateService:
         """
         import time as time_module
 
+        # Check if using REST client
+        if isinstance(api, RouterOSClient):
+            try:
+                result = api.install_updates()
+                if result:
+                    return True, "Update installation initiated, router will reboot"
+                return False, "Failed to initiate update installation"
+            except Exception as e:
+                # Connection errors are expected during reboot
+                error_str = str(e).lower()
+                if 'connection' in error_str or 'reset' in error_str or 'timeout' in error_str:
+                    return True, "Update initiated, router is rebooting"
+                return False, f"Install failed: {e}"
+
+        # Legacy librouteros API
         last_error = None
         for attempt in range(max_retries):
             try:
@@ -209,16 +243,14 @@ class UpdateService:
             except (socket.error, TimeoutError, ConnectionResetError):
                 # Expected - router is rebooting
                 return True, "Update initiated, router is rebooting"
-            except librouteros.exceptions.TrapError as e:
-                last_error = e
-                error_msg = e.message if hasattr(e, 'message') else str(e)
-                logger.warning(f"Install attempt {attempt + 1} failed: {error_msg}")
-                if attempt < max_retries - 1:
-                    time_module.sleep(RETRY_DELAY_SECONDS)
-                    continue
             except Exception as e:
+                # Check for TrapError (librouteros)
+                if hasattr(e, 'message'):
+                    error_msg = e.message
+                else:
+                    error_msg = str(e)
                 last_error = e
-                logger.warning(f"Install attempt {attempt + 1} failed: {type(e).__name__}: {e}")
+                logger.warning(f"Install attempt {attempt + 1} failed: {error_msg}")
                 if attempt < max_retries - 1:
                     time_module.sleep(RETRY_DELAY_SECONDS)
                     continue
@@ -234,17 +266,21 @@ class UpdateService:
             Tuple of (upgrade_available, current_firmware, upgrade_firmware)
         """
         try:
-            rb_response = list(api.path('/system/routerboard').select(
-                'current-firmware', 'upgrade-firmware'
-            ))
-            if rb_response:
-                info = rb_response[0]
-                current = info.get('current-firmware')
-                upgrade = info.get('upgrade-firmware')
+            # Check if using REST client
+            if isinstance(api, RouterOSClient):
+                info = api.get_routerboard()
+            else:
+                rb_response = list(api.path('/system/routerboard').select(
+                    'current-firmware', 'upgrade-firmware'
+                ))
+                info = rb_response[0] if rb_response else {}
 
-                if current and upgrade and current != upgrade:
-                    return True, current, upgrade
-                return False, current, upgrade
+            current = info.get('current-firmware')
+            upgrade = info.get('upgrade-firmware')
+
+            if current and upgrade and current != upgrade:
+                return True, current, upgrade
+            return False, current, upgrade
         except Exception as e:
             logger.debug(f"Error checking firmware: {e}")
 
@@ -259,7 +295,14 @@ class UpdateService:
             Tuple of (success, message)
         """
         try:
-            # Use tuple() to force execution, matching original script behavior
+            # Check if using REST client
+            if isinstance(api, RouterOSClient):
+                result = api.upgrade_firmware()
+                if result:
+                    return True, "Firmware upgrade command sent"
+                return False, "Failed to send firmware upgrade command"
+
+            # Legacy librouteros API
             routerboard_path = api.path('/system', 'routerboard')
             tuple(routerboard_path('upgrade'))
             return True, "Firmware upgrade command sent"
@@ -269,13 +312,21 @@ class UpdateService:
     @staticmethod
     def reboot_router(api: Any) -> Tuple[bool, str]:
         """
-        Reboot router using script method.
+        Reboot router.
 
         Returns:
             Tuple of (success, message)
         """
         try:
-            # Check if reboot script exists
+            # Check if using REST client
+            if isinstance(api, RouterOSClient):
+                result = api.reboot()
+                if result:
+                    return True, "Reboot initiated"
+                return False, "Failed to initiate reboot"
+
+            # Legacy librouteros API - use script method
+            from librouteros.query import Key
             name_key = Key('name')
             scripts = list(
                 api.path('/system', 'script')
@@ -300,8 +351,6 @@ class UpdateService:
 
         except (socket.error, TimeoutError, ConnectionResetError):
             return True, "Router is rebooting as expected"
-        except librouteros.exceptions.ConnectionClosed:
-            return True, "Router is rebooting (connection closed)"
         except Exception as e:
             # Check if it's a connection-related error (router rebooting)
             error_str = str(e).lower()
@@ -350,9 +399,13 @@ class UpdateService:
 
             # Get router identity
             try:
-                identity_data = list(api.path('/system/identity').select('name'))
-                if identity_data:
-                    result.identity = identity_data[0].get('name')
+                if isinstance(api, RouterOSClient):
+                    identity_data = api.get_identity()
+                    result.identity = identity_data.get('name')
+                else:
+                    identity_data = list(api.path('/system/identity').select('name'))
+                    if identity_data:
+                        result.identity = identity_data[0].get('name')
             except Exception:
                 pass
 
@@ -438,30 +491,41 @@ class UpdateService:
             # Collect full router info for database update (if not rebooting)
             if not result.rebooted:
                 try:
-                    # Get RouterOS version
-                    resource = list(api.path('/system/resource').select('version', 'board-name'))
-                    if resource:
-                        result.ros_version = resource[0].get('version')
-                        result.model = resource[0].get('board-name')
+                    if isinstance(api, RouterOSClient):
+                        # REST API client
+                        resource = api.get_resources()
+                        result.ros_version = resource.get('version')
+                        result.model = resource.get('board-name')
 
-                    # Get firmware info
-                    rb_info = list(api.path('/system/routerboard').select(
-                        'current-firmware', 'upgrade-firmware'
-                    ))
-                    if rb_info:
-                        result.firmware = rb_info[0].get('current-firmware')
-                        result.upgrade_firmware = rb_info[0].get('upgrade-firmware')
+                        rb_info = api.get_routerboard()
+                        result.firmware = rb_info.get('current-firmware')
+                        result.upgrade_firmware = rb_info.get('upgrade-firmware')
 
-                    # Get update channel
-                    update_info = list(api.path('/system/package/update').select('channel'))
-                    if update_info:
-                        result.update_channel = update_info[0].get('channel')
+                        update_info = api.get_update_status()
+                        result.update_channel = update_info.get('channel')
+                    else:
+                        # Legacy librouteros API
+                        resource = list(api.path('/system/resource').select('version', 'board-name'))
+                        if resource:
+                            result.ros_version = resource[0].get('version')
+                            result.model = resource[0].get('board-name')
+
+                        rb_info = list(api.path('/system/routerboard').select(
+                            'current-firmware', 'upgrade-firmware'
+                        ))
+                        if rb_info:
+                            result.firmware = rb_info[0].get('current-firmware')
+                            result.upgrade_firmware = rb_info[0].get('upgrade-firmware')
+
+                        update_info = list(api.path('/system/package/update').select('channel'))
+                        if update_info:
+                            result.update_channel = update_info[0].get('channel')
                 except Exception:
                     pass  # Non-critical, continue
 
             result.success = True
 
-        except librouteros.exceptions.TrapError as e:
+        except RouterOSException as e:
             error_msg = e.message if hasattr(e, 'message') else str(e)
             result.error = f"API Error: {error_msg}"
             result.messages.append(result.error)

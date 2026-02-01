@@ -6,14 +6,17 @@ import time
 from typing import Optional, Dict, Any, List, Tuple
 from dataclasses import dataclass
 
-import librouteros
-from librouteros.query import Key
+# REST API client (replaces librouteros)
+from .routeros_rest import RouterOSClient, RouterOSException
 
 from ..core.constants import (
     MIN_CONNECTION_TIMEOUT, MAX_RETRY_ATTEMPTS, RETRY_DELAY_SECONDS,
     DEFAULT_API_PORT
 )
 from ..core.enums import RouterOSCommand
+
+# Default REST API port (HTTPS)
+DEFAULT_REST_PORT = 443
 
 logger = logging.getLogger(__name__)
 
@@ -100,21 +103,51 @@ class RouterService:
         host: HostInfo,
         default_username: str,
         default_password: str,
-        timeout: int = MIN_CONNECTION_TIMEOUT
+        timeout: int = MIN_CONNECTION_TIMEOUT,
+        use_rest: bool = True,
+        rest_port: int = DEFAULT_REST_PORT
     ) -> Any:
-        """Establish connection to MikroTik router using librouteros."""
+        """
+        Establish connection to MikroTik router.
+
+        Args:
+            host: Host connection info
+            default_username: Fallback username
+            default_password: Fallback password
+            timeout: Connection timeout
+            use_rest: Use REST API (True) or legacy API (False)
+            rest_port: REST API port (default 443)
+
+        Returns:
+            RouterOSClient for REST, or librouteros API object for legacy
+        """
         username = host.username or default_username
         password = host.password or default_password
         effective_timeout = max(MIN_CONNECTION_TIMEOUT, timeout)
 
-        api = librouteros.connect(
-            host=host.ip,
-            username=username,
-            password=password,
-            port=host.port,
-            timeout=effective_timeout
-        )
-        return api
+        if use_rest:
+            # Use REST API (RouterOS 7+)
+            client = RouterOSClient(
+                host=host.ip,
+                username=username,
+                password=password,
+                port=rest_port,
+                timeout=effective_timeout
+            )
+            if not client.connect():
+                raise RouterOSException(f"Failed to connect to {host.ip}:{rest_port}")
+            return client
+        else:
+            # Legacy librouteros connection (fallback)
+            import librouteros
+            api = librouteros.connect(
+                host=host.ip,
+                username=username,
+                password=password,
+                port=host.port,
+                timeout=effective_timeout
+            )
+            return api
 
     @staticmethod
     def execute_with_retry(
@@ -143,53 +176,84 @@ class RouterService:
 
     @staticmethod
     def get_router_info(api: Any, ip: str) -> RouterInfo:
-        """Gather comprehensive router information."""
+        """
+        Gather comprehensive router information.
+
+        Works with both RouterOSClient (REST) and librouteros API.
+        """
         info = RouterInfo(ip=ip)
+
+        # Check if using REST client
+        is_rest = isinstance(api, RouterOSClient)
 
         try:
             # Get Identity
-            identity_response = list(api.path('/system/identity').select('name'))
-            if identity_response:
-                info.identity = identity_response[0].get('name', 'N/A')
+            if is_rest:
+                identity_data = api.get_identity()
+                info.identity = identity_data.get('name', 'N/A')
+            else:
+                identity_response = list(api.path('/system/identity').select('name'))
+                if identity_response:
+                    info.identity = identity_response[0].get('name', 'N/A')
         except Exception as e:
             logger.debug(f"Identity query failed for {ip}: {e}")
 
         try:
             # Get Routerboard info
-            rb_response = list(api.path('/system/routerboard').select(
-                'board-name', 'current-firmware', 'upgrade-firmware'
-            ))
-            if rb_response:
-                rb = rb_response[0]
+            if is_rest:
+                rb = api.get_routerboard()
                 info.model = rb.get('board-name', rb.get('model', 'N/A'))
                 info.current_firmware = rb.get('current-firmware', 'N/A')
                 info.upgrade_firmware = rb.get('upgrade-firmware', 'N/A')
+            else:
+                rb_response = list(api.path('/system/routerboard').select(
+                    'board-name', 'current-firmware', 'upgrade-firmware'
+                ))
+                if rb_response:
+                    rb = rb_response[0]
+                    info.model = rb.get('board-name', rb.get('model', 'N/A'))
+                    info.current_firmware = rb.get('current-firmware', 'N/A')
+                    info.upgrade_firmware = rb.get('upgrade-firmware', 'N/A')
         except Exception as e:
             logger.debug(f"Routerboard query failed for {ip}: {e}")
 
         try:
             # Get System Resource
-            res_response = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
-            if res_response:
-                res = res_response[0]
+            if is_rest:
+                res = api.get_resources()
                 info.os_version = res.get('version', 'N/A')
                 info.uptime = res.get('uptime', 'N/A')
                 total_mem = int(res.get('total-memory', 0))
                 info.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
                 info.architecture = res.get('architecture-name')
+            else:
+                res_response = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
+                if res_response:
+                    res = res_response[0]
+                    info.os_version = res.get('version', 'N/A')
+                    info.uptime = res.get('uptime', 'N/A')
+                    total_mem = int(res.get('total-memory', 0))
+                    info.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                    info.architecture = res.get('architecture-name')
         except Exception as e:
             logger.debug(f"Resource query failed for {ip}: {e}")
 
         try:
             # Get Package Update Info
-            update_response = list(api.path('/system/package/update').select(
-                'channel', 'installed-version', 'latest-version', 'status'
-            ))
-            if update_response:
-                upd = update_response[0]
+            if is_rest:
+                upd = api.get_update_status()
                 info.update_channel = upd.get('channel', upd.get('status', 'N/A'))
                 info.installed_version = upd.get('installed-version', 'N/A')
                 info.latest_version = upd.get('latest-version', 'N/A')
+            else:
+                update_response = list(api.path('/system/package/update').select(
+                    'channel', 'installed-version', 'latest-version', 'status'
+                ))
+                if update_response:
+                    upd = update_response[0]
+                    info.update_channel = upd.get('channel', upd.get('status', 'N/A'))
+                    info.installed_version = upd.get('installed-version', 'N/A')
+                    info.latest_version = upd.get('latest-version', 'N/A')
         except Exception as e:
             logger.debug(f"Package update query failed for {ip}: {e}")
 

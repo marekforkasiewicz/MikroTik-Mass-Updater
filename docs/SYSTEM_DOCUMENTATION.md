@@ -32,8 +32,10 @@ MikroTik Mass Updater to aplikacja do masowego zarządzania routerami MikroTik. 
 | Backend | Python 3.11+, FastAPI, SQLAlchemy |
 | Frontend | Vue 3, Pinia, Bootstrap 5 |
 | Baza danych | SQLite (default) / PostgreSQL |
-| Komunikacja z routerami | librouteros (API), paramiko (SSH) |
+| Komunikacja z routerami | RouterOS REST API (HTTPS/443), paramiko (SSH) |
 | WebSocket | FastAPI WebSocket |
+
+> **Uwaga:** System używa natywnego REST API RouterOS 7+ (HTTPS na porcie 443). Wymaga to włączonej usługi `www-ssl` na routerach oraz wygenerowanego certyfikatu SSL.
 
 ---
 
@@ -696,7 +698,40 @@ src/
 
 ---
 
-## Konfiguracja
+## Konfiguracja routerów MikroTik
+
+### Wymagania REST API
+
+System używa natywnego REST API RouterOS 7+. Przed użyciem aplikacji należy włączyć usługę `www-ssl` na routerach:
+
+```bash
+# Połącz się z routerem przez SSH lub Winbox i wykonaj:
+
+# 1. Wygeneruj certyfikat SSL
+/certificate add name=https common-name=router days-valid=3650 key-size=2048
+/certificate sign https
+
+# 2. Włącz usługę www-ssl z certyfikatem
+/ip service enable www-ssl
+/ip service set www-ssl certificate=https
+
+# 3. Opcjonalnie: ogranicz dostęp do REST API
+/ip service set www-ssl address=192.168.1.0/24
+```
+
+### Weryfikacja REST API
+
+```bash
+# Test z poziomu linii poleceń
+curl -k -u admin:password https://192.168.1.1/rest/system/identity
+
+# Oczekiwana odpowiedź:
+# {"name":"MikroTik"}
+```
+
+---
+
+## Konfiguracja aplikacji
 
 ### Zmienne środowiskowe
 

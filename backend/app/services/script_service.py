@@ -329,6 +329,8 @@ class ScriptService:
                 try:
                     # Handle /path/to/resource print style commands
                     if line.startswith('/'):
+                        from .routeros_rest import RouterOSClient
+
                         # Parse path like "/ip service print" or "/certificate print"
                         parts = line.split()
 
@@ -355,7 +357,14 @@ class ScriptService:
 
                         if path_tokens:
                             # Build the API path
-                            path = api.path('/' + path_tokens[0], *path_tokens[1:])
+                            path_string = '/' + '/'.join(path_tokens)
+
+                            if isinstance(api, RouterOSClient):
+                                # Use REST API client
+                                path = api.path(path_string)
+                            else:
+                                # Legacy librouteros API
+                                path = api.path('/' + path_tokens[0], *path_tokens[1:])
 
                             if action == 'print':
                                 results = list(path)
@@ -375,20 +384,39 @@ class ScriptService:
 
             # If no direct commands worked, fall back to script execution
             if not output_lines:
+                from .routeros_rest import RouterOSClient
                 script_name = f"_temp_script_{datetime.utcnow().strftime('%Y%m%d%H%M%S')}"
-                script_path = api.path('/system', 'script')
-                tuple(script_path('add', name=script_name, source=script_content))
-                result = tuple(script_path('run', number=script_name))
 
-                # Cleanup
-                try:
-                    from librouteros.query import Key
-                    name_key = Key('name')
-                    scripts = list(script_path.select(name_key).where(name_key == script_name))
-                    if scripts:
-                        tuple(script_path('remove', numbers=scripts[0]['.id']))
-                except Exception:
-                    pass
+                if isinstance(api, RouterOSClient):
+                    # Use REST API client directly
+                    script = api.create_script(
+                        name=script_name,
+                        source=script_content,
+                        policy=["read", "write", "test", "reboot"]
+                    )
+                    script_id = script.get('.id')
+                    result = api.run_script(script_id=script_id)
+
+                    # Cleanup
+                    try:
+                        api.delete_script(script_id)
+                    except Exception:
+                        pass
+                else:
+                    # Legacy librouteros API
+                    script_path = api.path('/system', 'script')
+                    tuple(script_path('add', name=script_name, source=script_content))
+                    result = tuple(script_path('run', number=script_name))
+
+                    # Cleanup
+                    try:
+                        from librouteros.query import Key
+                        name_key = Key('name')
+                        scripts = list(script_path.select(name_key).where(name_key == script_name))
+                        if scripts:
+                            tuple(script_path('remove', numbers=scripts[0]['.id']))
+                    except Exception:
+                        pass
 
                 output_lines.append("Script executed (no direct output available)")
                 output_lines.append(f"Result: {result}")
