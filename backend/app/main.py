@@ -16,7 +16,7 @@ from .api import (
     auth_router, users_router, groups_router, schedules_router,
     notifications_router, backups_router, scripts_router,
     monitoring_router, reports_router, dashboard_router, webhooks_router,
-    discovery_router, templates_router, compliance_router
+    discovery_router, templates_router, compliance_router, topology_router
 )
 from .api.websocket import router as websocket_router
 from .services.auth_service import AuthService
@@ -158,6 +158,9 @@ app.include_router(templates_router, prefix=settings.API_PREFIX)
 
 # Compliance - always enabled
 app.include_router(compliance_router, prefix=settings.API_PREFIX)
+
+# Topology - always enabled
+app.include_router(topology_router, prefix=settings.API_PREFIX)
 
 
 # API info endpoint

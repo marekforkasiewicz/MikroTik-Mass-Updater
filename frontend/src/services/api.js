@@ -378,6 +378,18 @@ export const complianceApi = {
 }
 
 // =============================================================================
+// Topology API
+// =============================================================================
+export const topologyApi = {
+  getMap: () => api.get('/topology/map'),
+  getNeighbors: (routerId) => api.get(`/topology/neighbors/${routerId}`),
+  refreshNeighbors: (routerId) => api.post(`/topology/neighbors/${routerId}/refresh`),
+  refreshAllNeighbors: () => api.post('/topology/neighbors/refresh-all'),
+  saveLayout: (layout) => api.post('/topology/layout', layout),
+  getLayout: () => api.get('/topology/layout')
+}
+
+// =============================================================================
 // Template Deployment WebSocket
 // =============================================================================
 export const createTemplateDeployWebSocket = (taskId, onMessage, onError) => {

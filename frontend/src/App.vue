@@ -69,6 +69,12 @@
             Monitoring
           </router-link>
         </li>
+        <li class="nav-item">
+          <router-link to="/topology" class="nav-link" :class="{ active: $route.path === '/topology' }">
+            <i class="bi bi-diagram-3"></i>
+            Topology
+          </router-link>
+        </li>
 
         <!-- Separator -->
         <li class="nav-item mt-2 mb-2">

@@ -17,6 +17,7 @@ const Settings = () => import('../components/Settings.vue')
 const ReportsAndLogs = () => import('../components/ReportsAndLogs.vue')
 const TemplateList = () => import('../components/TemplateList.vue')
 const ComplianceCheck = () => import('../components/ComplianceCheck.vue')
+const NetworkTopology = () => import('../components/NetworkTopology.vue')
 
 const routes = [
   {
@@ -79,6 +80,11 @@ const routes = [
     name: 'compliance',
     component: ComplianceCheck,
     meta: { requiresOperator: true }
+  },
+  {
+    path: '/topology',
+    name: 'topology',
+    component: NetworkTopology
   },
 
   // Legacy route redirects (for bookmarks/saved links)

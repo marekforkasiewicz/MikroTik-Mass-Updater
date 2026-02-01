@@ -39,6 +39,10 @@ class Router(Base):
     location = Column(String(255), nullable=True)
     notes = Column(Text, nullable=True)
 
+    # Topology/neighbors data
+    neighbors = Column(JSON, nullable=True)
+    rest_port = Column(Integer, default=443)
+
     # Timestamps
     last_seen = Column(DateTime, nullable=True)
     last_scan = Column(DateTime, nullable=True)

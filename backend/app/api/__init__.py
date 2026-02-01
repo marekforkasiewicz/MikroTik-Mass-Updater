@@ -16,6 +16,7 @@ from .webhooks import router as webhooks_router
 from .discovery import router as discovery_router
 from .templates import router as templates_router
 from .compliance import router as compliance_router
+from .topology import router as topology_router
 
 __all__ = [
     "routers_router",
@@ -36,4 +37,5 @@ __all__ = [
     "discovery_router",
     "templates_router",
     "compliance_router",
+    "topology_router",
 ]

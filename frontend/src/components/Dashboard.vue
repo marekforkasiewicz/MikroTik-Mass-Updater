@@ -56,6 +56,45 @@
       </div>
     </div>
 
+    <!-- Charts Row -->
+    <div class="row g-4 mb-4">
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">RouterOS Versions</h6>
+          </div>
+          <div class="card-body">
+            <Pie v-if="versionChartData.labels.length > 0" :data="versionChartData" :options="pieOptions" />
+            <div v-else class="text-center text-muted py-4">No data available</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Router Models</h6>
+          </div>
+          <div class="card-body">
+            <Bar v-if="modelChartData.labels.length > 0" :data="modelChartData" :options="barOptions" />
+            <div v-else class="text-center text-muted py-4">No data available</div>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-md-4">
+        <div class="card h-100">
+          <div class="card-header">
+            <h6 class="mb-0">Health Status</h6>
+          </div>
+          <div class="card-body">
+            <Doughnut v-if="healthChartData.labels.length > 0" :data="healthChartData" :options="doughnutOptions" />
+            <div v-else class="text-center text-muted py-4">No data available</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Quick Actions -->
     <div class="row g-4 mb-4">
       <div class="col-md-6">
@@ -227,7 +266,21 @@
 <script setup>
 import { ref, computed, onMounted } from 'vue'
 import { useMainStore } from '../stores/main'
-import { discoveryApi, routerApi } from '../services/api'
+import { discoveryApi, routerApi, dashboardApi } from '../services/api'
+import { Pie, Bar, Doughnut } from 'vue-chartjs'
+import {
+  Chart as ChartJS,
+  Title,
+  Tooltip,
+  Legend,
+  ArcElement,
+  CategoryScale,
+  LinearScale,
+  BarElement
+} from 'chart.js'
+
+// Register Chart.js components
+ChartJS.register(Title, Tooltip, Legend, ArcElement, CategoryScale, LinearScale, BarElement)
 
 const store = useMainStore()
 const loading = ref(false)
@@ -237,11 +290,102 @@ const discoveryLoading = ref(false)
 const discoveredRouters = ref([])
 const addingRouter = ref(null)
 
+// Chart data
+const versionChartData = ref({ labels: [], datasets: [] })
+const modelChartData = ref({ labels: [], datasets: [] })
+const healthChartData = ref({ labels: [], datasets: [] })
+
+// Chart colors
+const chartColors = [
+  '#0d6efd', '#6610f2', '#6f42c1', '#d63384', '#dc3545',
+  '#fd7e14', '#ffc107', '#198754', '#20c997', '#0dcaf0'
+]
+
+const healthColors = {
+  'Healthy': '#198754',
+  'Warning': '#ffc107',
+  'Critical': '#dc3545',
+  'Unknown': '#6c757d'
+}
+
+// Chart options
+const pieOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: {
+    legend: { position: 'bottom', labels: { boxWidth: 12 } }
+  }
+}
+
+const barOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  indexAxis: 'y',
+  plugins: {
+    legend: { display: false }
+  },
+  scales: {
+    x: { beginAtZero: true, ticks: { stepSize: 1 } }
+  }
+}
+
+const doughnutOptions = {
+  responsive: true,
+  maintainAspectRatio: true,
+  plugins: {
+    legend: { position: 'bottom', labels: { boxWidth: 12 } }
+  }
+}
+
 const discoveredCount = computed(() => discoveredRouters.value.length)
 
 const recentRouters = computed(() => {
   return store.routers.slice(0, 5)
 })
+
+// Load chart data
+const loadChartData = async () => {
+  try {
+    // Version distribution
+    const versionData = await dashboardApi.getChart('version_pie')
+    if (versionData.data && versionData.data.length > 0) {
+      versionChartData.value = {
+        labels: versionData.data.map(d => d.label),
+        datasets: [{
+          data: versionData.data.map(d => d.value),
+          backgroundColor: chartColors.slice(0, versionData.data.length)
+        }]
+      }
+    }
+
+    // Model distribution
+    const modelData = await dashboardApi.getChart('model_bar')
+    if (modelData.data && modelData.data.length > 0) {
+      modelChartData.value = {
+        labels: modelData.data.map(d => d.label),
+        datasets: [{
+          label: 'Count',
+          data: modelData.data.map(d => d.value),
+          backgroundColor: '#0d6efd'
+        }]
+      }
+    }
+
+    // Health distribution
+    const healthData = await dashboardApi.getChart('health_pie')
+    if (healthData.data && healthData.data.length > 0) {
+      healthChartData.value = {
+        labels: healthData.data.map(d => d.label),
+        datasets: [{
+          data: healthData.data.map(d => d.value),
+          backgroundColor: healthData.data.map(d => healthColors[d.label] || '#6c757d')
+        }]
+      }
+    }
+  } catch (error) {
+    console.error('Failed to load chart data:', error)
+  }
+}
 
 // Check if a discovered device is already configured
 const isConfigured = (device) => {
@@ -317,6 +461,10 @@ const startFullScan = async () => {
 
 // Run discovery on mount (use cached results first)
 onMounted(async () => {
+  // Load chart data
+  loadChartData()
+
+  // Load cached discovery results
   try {
     const cached = await discoveryApi.getCached()
     discoveredRouters.value = cached.discovered || []
