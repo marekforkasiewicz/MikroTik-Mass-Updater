@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Core Router - CCR rack mount style -->
+  <defs>
+    <linearGradient id="ccr-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#1a202c"/>
+      <stop offset="100%" style="stop-color:#0d1117"/>
+    </linearGradient>
+  </defs>
+  <!-- Main body (1U rack) -->
+  <rect x="2" y="22" width="60" height="20" rx="2" fill="url(#ccr-grad)" stroke="#4a5568" stroke-width="1.5"/>
+  <!-- Front panel detail -->
+  <rect x="6" y="25" width="20" height="14" rx="1" fill="#2d3748"/>
+  <!-- LCD Display -->
+  <rect x="8" y="27" width="16" height="8" rx="1" fill="#1e3a5f"/>
+  <text x="16" cy="33" text-anchor="middle" font-size="4" fill="#4299e1" font-family="monospace">CCR</text>
+  <!-- Status LEDs -->
+  <circle cx="10" cy="37" r="1.5" fill="#48bb78"/>
+  <circle cx="15" cy="37" r="1.5" fill="#48bb78"/>
+  <circle cx="20" cy="37" r="1.5" fill="#f6e05e"/>
+  <!-- Ports section -->
+  <rect x="28" y="25" width="30" height="14" rx="1" fill="#2d3748"/>
+  <!-- Ethernet ports -->
+  <rect x="30" y="27" width="4" height="4" rx="0.5" fill="#4299e1"/>
+  <rect x="36" y="27" width="4" height="4" rx="0.5" fill="#48bb78"/>
+  <rect x="42" y="27" width="4" height="4" rx="0.5" fill="#48bb78"/>
+  <rect x="48" y="27" width="4" height="4" rx="0.5" fill="#48bb78"/>
+  <rect x="30" y="33" width="4" height="4" rx="0.5" fill="#48bb78"/>
+  <rect x="36" y="33" width="4" height="4" rx="0.5" fill="#48bb78"/>
+  <rect x="42" y="33" width="4" height="4" rx="0.5" fill="#718096"/>
+  <rect x="48" y="33" width="4" height="4" rx="0.5" fill="#718096"/>
+  <!-- SFP+ ports -->
+  <rect x="54" y="27" width="3" height="10" rx="0.5" fill="#ed8936"/>
+  <!-- Rack ears -->
+  <rect x="0" y="24" width="2" height="16" rx="0.5" fill="#4a5568"/>
+  <rect x="62" y="24" width="2" height="16" rx="0.5" fill="#4a5568"/>
+  <circle cx="1" cy="28" r="0.8" fill="#1a202c"/>
+  <circle cx="1" cy="36" r="0.8" fill="#1a202c"/>
+  <circle cx="63" cy="28" r="0.8" fill="#1a202c"/>
+  <circle cx="63" cy="36" r="0.8" fill="#1a202c"/>
+  <!-- Ventilation -->
+  <line x1="4" y1="44" x2="60" y2="44" stroke="#2d3748" stroke-width="1"/>
+</svg>

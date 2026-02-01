@@ -30,22 +30,37 @@
             </button>
           </div>
           <div class="col">
-            <div class="d-flex justify-content-end gap-3">
+            <div class="d-flex justify-content-end gap-3 flex-wrap align-items-center">
+              <!-- Device types -->
+              <div class="d-flex align-items-center" title="Edge/Gateway Router">
+                <img src="/icons/router-edge.svg" class="legend-icon me-1" alt="Edge Router">
+                <small>Gateway</small>
+              </div>
+              <div class="d-flex align-items-center" title="Standard Router">
+                <img src="/icons/router.svg" class="legend-icon me-1" alt="Router">
+                <small>Router</small>
+              </div>
+              <div class="d-flex align-items-center" title="Access Point">
+                <img src="/icons/access-point.svg" class="legend-icon me-1" alt="AP">
+                <small>AP</small>
+              </div>
+              <div class="d-flex align-items-center" title="Wireless Bridge">
+                <img src="/icons/wireless-bridge.svg" class="legend-icon me-1" alt="Wireless">
+                <small>Wireless</small>
+              </div>
+              <span class="text-muted">|</span>
+              <!-- Status colors -->
               <div class="d-flex align-items-center">
-                <span class="badge bg-success me-1">&nbsp;</span>
-                <small>Healthy</small>
+                <span class="status-dot bg-success me-1"></span>
+                <small>OK</small>
               </div>
               <div class="d-flex align-items-center">
-                <span class="badge bg-warning me-1">&nbsp;</span>
+                <span class="status-dot bg-warning me-1"></span>
                 <small>Warning</small>
               </div>
               <div class="d-flex align-items-center">
-                <span class="badge bg-danger me-1">&nbsp;</span>
-                <small>Critical/Offline</small>
-              </div>
-              <div class="d-flex align-items-center">
-                <span class="badge bg-primary me-1">&nbsp;</span>
-                <small>Online</small>
+                <span class="status-dot bg-danger me-1"></span>
+                <small>Offline</small>
               </div>
             </div>
           </div>
@@ -189,14 +204,25 @@ let detailModal = null
 
 const networkOptions = {
   nodes: {
-    shape: 'dot',
-    size: 20,
+    shape: 'circularImage',
+    size: 35,
     font: {
       size: 12,
-      color: '#333'
+      color: '#333',
+      vadjust: 30
     },
-    borderWidth: 2,
-    shadow: true
+    borderWidth: 3,
+    shadow: {
+      enabled: true,
+      color: 'rgba(0,0,0,0.25)',
+      size: 8,
+      x: 2,
+      y: 2
+    },
+    shapeProperties: {
+      useBorderWithImage: true,
+      interpolation: false
+    }
   },
   edges: {
     width: 2,
@@ -370,5 +396,18 @@ onUnmounted(() => {
   border: 1px solid #dee2e6;
   border-radius: 0.375rem;
   background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+}
+
+.legend-icon {
+  width: 28px;
+  height: 28px;
+  object-fit: contain;
+}
+
+.status-dot {
+  display: inline-block;
+  width: 10px;
+  height: 10px;
+  border-radius: 50%;
 }
 </style>

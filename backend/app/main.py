@@ -222,6 +222,10 @@ async def health_check():
 static_dir = settings.STATIC_DIR
 if static_dir.exists():
     app.mount("/assets", StaticFiles(directory=static_dir / "assets"), name="assets")
+    # Serve icons directory for topology visualization
+    icons_dir = static_dir / "icons"
+    if icons_dir.exists():
+        app.mount("/icons", StaticFiles(directory=icons_dir), name="icons")
 
     @app.get("/favicon.ico")
     async def favicon():

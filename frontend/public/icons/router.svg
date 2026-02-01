@@ -1,0 +1,30 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" width="64" height="64">
+  <!-- Standard Router - hAP style -->
+  <defs>
+    <linearGradient id="router-grad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" style="stop-color:#e2e8f0"/>
+      <stop offset="100%" style="stop-color:#a0aec0"/>
+    </linearGradient>
+  </defs>
+  <!-- Router body -->
+  <rect x="6" y="22" width="52" height="24" rx="4" fill="url(#router-grad)" stroke="#718096" stroke-width="2"/>
+  <!-- Ventilation slots -->
+  <rect x="12" y="28" width="12" height="2" rx="1" fill="#718096"/>
+  <rect x="12" y="32" width="12" height="2" rx="1" fill="#718096"/>
+  <rect x="12" y="36" width="12" height="2" rx="1" fill="#718096"/>
+  <!-- LEDs -->
+  <circle cx="32" cy="30" r="2.5" fill="#48bb78"/>
+  <circle cx="32" cy="38" r="2.5" fill="#4299e1"/>
+  <!-- Ethernet ports -->
+  <rect x="42" y="27" width="5" height="4" rx="1" fill="#2d3748"/>
+  <rect x="49" y="27" width="5" height="4" rx="1" fill="#2d3748"/>
+  <rect x="42" y="35" width="5" height="4" rx="1" fill="#2d3748"/>
+  <rect x="49" y="35" width="5" height="4" rx="1" fill="#2d3748"/>
+  <!-- Antennas -->
+  <rect x="18" y="8" width="3" height="14" rx="1.5" fill="#4a5568"/>
+  <rect x="43" y="8" width="3" height="14" rx="1.5" fill="#4a5568"/>
+  <circle cx="19.5" cy="8" r="3" fill="#4a5568"/>
+  <circle cx="44.5" cy="8" r="3" fill="#4a5568"/>
+  <!-- Stand -->
+  <rect x="20" y="46" width="24" height="4" rx="2" fill="#718096"/>
+</svg>

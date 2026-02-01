@@ -59,25 +59,25 @@ class TopologyService:
                     status = "online"
                     color = "#0d6efd"  # blue
 
-            # Determine node shape and size
+            # Determine node icon and size
             is_main = router.id == main_router_id
-            shape = "star" if is_main else "dot"
-            size = 35 if is_main else 20
+            icon = "router-edge" if is_main else "router"
+            size = 45 if is_main else 35
 
             if not is_main and router.model:
                 model_lower = router.model.lower()
                 if "ccr" in model_lower:
-                    shape = "diamond"
-                    size = 25
+                    icon = "core-router"
+                    size = 40
                 elif "crs" in model_lower:
-                    shape = "square"
-                    size = 22
+                    icon = "switch"
+                    size = 40
                 elif "cap" in model_lower or "wap" in model_lower:
-                    shape = "triangle"
-                    size = 22
+                    icon = "access-point"
+                    size = 35
                 elif "sxt" in model_lower or "lhg" in model_lower:
-                    shape = "triangleDown"
-                    size = 22
+                    icon = "wireless-bridge"
+                    size = 38
 
             # Main router styling
             border_width = 3 if is_main else 2
@@ -91,11 +91,18 @@ class TopologyService:
                 "model": router.model,
                 "version": router.ros_version,
                 "status": status,
-                "color": {"background": color, "border": "#000" if is_main else color},
-                "shape": shape,
+                "icon": icon,
+                "shape": "circularImage",
+                "image": f"/icons/{icon}.svg",
                 "size": size,
-                "borderWidth": border_width,
-                "font": {"size": font_size, "bold": is_main}
+                "borderWidth": 4 if is_main else 3,
+                "color": {
+                    "border": color,
+                    "background": "#ffffff",
+                    "highlight": {"border": color, "background": "#f0f0f0"},
+                    "hover": {"border": color, "background": "#f8f8f8"}
+                },
+                "font": {"size": font_size, "bold": is_main, "vadjust": size // 2 + 8}
             })
 
         # Try to discover edges from neighbor data
