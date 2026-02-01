@@ -64,10 +64,28 @@ async def lifespan(app: FastAPI):
         except Exception as e:
             logger.warning(f"Failed to start scheduler: {e}")
 
+    # Start auto-monitoring
+    if settings.FEATURE_MONITORING:
+        try:
+            from .services.auto_monitor import start_auto_monitoring
+            start_auto_monitoring(interval=60)  # Check every 60 seconds
+            logger.info("Auto-monitoring started")
+        except Exception as e:
+            logger.warning(f"Failed to start auto-monitoring: {e}")
+
     yield
 
     # Shutdown
     logger.info("Shutting down...")
+
+    # Stop auto-monitoring
+    if settings.FEATURE_MONITORING:
+        try:
+            from .services.auto_monitor import stop_auto_monitoring
+            stop_auto_monitoring()
+            logger.info("Auto-monitoring stopped")
+        except Exception as e:
+            logger.warning(f"Error stopping auto-monitoring: {e}")
 
     # Stop scheduler
     if settings.FEATURE_SCHEDULING:
