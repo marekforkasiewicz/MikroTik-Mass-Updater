@@ -3,19 +3,20 @@
 # Stage 1: Build frontend
 FROM node:20-alpine AS frontend-build
 
-WORKDIR /app
+WORKDIR /build
 
 # Copy package files
-COPY frontend/package*.json ./
+COPY frontend/package*.json ./frontend/
 
 # Install dependencies
+WORKDIR /build/frontend
 RUN npm ci
 
 # Copy frontend source
 COPY frontend/ ./
 
-# Build frontend
-RUN npm run build
+# Create output directory and build
+RUN mkdir -p /build/backend/static && npm run build
 
 # Stage 2: Backend + Frontend
 FROM python:3.11-slim
@@ -35,8 +36,8 @@ RUN pip install --no-cache-dir -r requirements.txt
 # Copy backend
 COPY backend/ ./backend/
 
-# Copy frontend build
-COPY --from=frontend-build /backend/static ./backend/static/
+# Copy frontend build from stage 1
+COPY --from=frontend-build /build/backend/static ./backend/static/
 
 # Create data directory
 RUN mkdir -p /app/data
