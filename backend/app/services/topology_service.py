@@ -133,10 +133,21 @@ class TopologyService:
                         edge_key = tuple(sorted([router.id, neighbor_id]))
                         if edge_key not in seen_edges:
                             seen_edges.add(edge_key)
+
+                            # Clean up interface name for display
+                            interface = neighbor.get("interface", "")
+                            # Extract just the port name (e.g., "ether3" from "ether3,bridgeLocal")
+                            port_name = interface.split(",")[0] if interface else ""
+
+                            # Build label with both ports if available
+                            label = port_name
+
                             edges.append({
                                 "from": router.id,
                                 "to": neighbor_id,
-                                "title": neighbor.get("interface", ""),
+                                "label": label,
+                                "title": f"{router.identity or router.ip} [{port_name}] ↔ {neighbor.get('identity', neighbor_ip)}",
+                                "font": {"size": 10, "align": "middle"},
                                 "width": 2,
                                 "color": {"color": "#6c757d", "opacity": 0.8}
                             })
@@ -221,45 +232,64 @@ class TopologyService:
         if not router.is_online:
             return {"error": "Router is offline"}
 
-        try:
-            client = RouterOSClient(
-                host=router.ip,
-                username=router.username,
-                password=router.password,
-                port=router.rest_port or 443
-            )
+        neighbors = []
+        client = None
 
-            neighbors = []
+        # Try different connection methods
+        connection_attempts = [
+            {"port": 443, "use_ssl": True},   # HTTPS on 443
+            {"port": 80, "use_ssl": False},   # HTTP on 80
+        ]
 
-            # Get IP neighbors
+        for attempt in connection_attempts:
             try:
-                ip_neighbors = client.get("/ip/neighbor")
-                for n in ip_neighbors:
-                    neighbors.append({
-                        "address": n.get("address"),
-                        "interface": n.get("interface"),
-                        "mac": n.get("mac-address"),
-                        "identity": n.get("identity"),
-                        "platform": n.get("platform"),
-                        "version": n.get("version"),
-                        "source": "ip/neighbor"
-                    })
+                client = RouterOSClient(
+                    host=router.ip,
+                    username=router.username,
+                    password=router.password,
+                    port=attempt["port"],
+                    use_ssl=attempt["use_ssl"],
+                    timeout=10
+                )
+
+                if client.connect():
+                    logger.info(f"Connected to {router.ip} on port {attempt['port']}")
+
+                    # Get IP neighbors
+                    response = client.get("/ip/neighbor")
+                    if response.success and response.data:
+                        for n in response.data:
+                            neighbors.append({
+                                "address": n.get("address"),
+                                "interface": n.get("interface"),
+                                "mac": n.get("mac-address"),
+                                "identity": n.get("identity"),
+                                "platform": n.get("platform"),
+                                "version": n.get("version"),
+                                "source": "ip/neighbor"
+                            })
+                        logger.info(f"Found {len(neighbors)} neighbors on {router.ip}")
+
+                    client.close()
+                    break
+
             except Exception as e:
-                logger.warning(f"Failed to get IP neighbors from {router.ip}: {e}")
+                logger.debug(f"Connection attempt to {router.ip}:{attempt['port']} failed: {e}")
+                if client:
+                    try:
+                        client.close()
+                    except:
+                        pass
 
-            # Update router with neighbor data
-            router.neighbors = neighbors
-            self.db.commit()
+        # Update router with neighbor data
+        router.neighbors = neighbors
+        self.db.commit()
 
-            return {
-                "router_id": router_id,
-                "neighbors": neighbors,
-                "count": len(neighbors)
-            }
-
-        except Exception as e:
-            logger.error(f"Failed to refresh neighbors for {router.ip}: {e}")
-            return {"error": str(e)}
+        return {
+            "router_id": router_id,
+            "neighbors": neighbors,
+            "count": len(neighbors)
+        }
 
     async def refresh_all_neighbors(self) -> Dict[str, Any]:
         """Refresh neighbor data for all online routers"""

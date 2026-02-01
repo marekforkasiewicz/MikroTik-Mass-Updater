@@ -77,7 +77,8 @@ class RouterOSClient:
         password: str,
         port: int = 443,
         timeout: int = 10,
-        verify_ssl: bool = False
+        verify_ssl: bool = False,
+        use_ssl: bool = True
     ):
         """
         Initialize RouterOS REST client.
@@ -89,6 +90,7 @@ class RouterOSClient:
             port: HTTPS port (default 443)
             timeout: Request timeout in seconds
             verify_ssl: Whether to verify SSL certificates
+            use_ssl: Use HTTPS (True) or HTTP (False)
         """
         self.host = host
         self.port = port
@@ -96,8 +98,10 @@ class RouterOSClient:
         self.password = password
         self.timeout = timeout
         self.verify_ssl = verify_ssl
+        self.use_ssl = use_ssl
 
-        self.base_url = f"https://{host}:{port}/rest"
+        protocol = "https" if use_ssl else "http"
+        self.base_url = f"{protocol}://{host}:{port}/rest"
         self.session: Optional[requests.Session] = None
         self.connected = False
 
