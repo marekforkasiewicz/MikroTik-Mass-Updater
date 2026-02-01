@@ -9,6 +9,10 @@ report_*.txt
 # Credentials and sensitive data
 list.txt
 
+# Node.js
+node_modules/
+dist/
+
 # Python
 __pycache__/
 *.py[cod]
