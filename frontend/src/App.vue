@@ -169,7 +169,7 @@
 </template>
 
 <script setup>
-import { computed, onMounted } from 'vue'
+import { computed, onMounted, watch } from 'vue'
 import { useRouter } from 'vue-router'
 import { useMainStore } from './stores/main'
 import { useAuthStore } from './stores/auth'
@@ -193,6 +193,13 @@ async function logout() {
   await authStore.logout()
   router.push('/login')
 }
+
+// Watch for authentication state changes
+watch(() => authStore.isAuthenticated, async (isAuth) => {
+  if (isAuth) {
+    await store.fetchRouters()
+  }
+})
 
 onMounted(async () => {
   store.initTheme()
