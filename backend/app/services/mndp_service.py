@@ -127,7 +127,8 @@ def parse_mndp_packet(data: bytes, source_ip: str) -> Optional[DiscoveredRouter]
             elif tlv_type == TLV_BOARD:
                 router.board = value.decode("utf-8", errors="ignore").rstrip("\x00")
             elif tlv_type == TLV_UPTIME and tlv_length == 4:
-                router.uptime = struct.unpack(">I", value)[0]
+                # Uptime is in seconds, little-endian format
+                router.uptime = struct.unpack("<I", value)[0]
             elif tlv_type == TLV_SOFTWARE_ID:
                 router.software_id = value.decode("utf-8", errors="ignore").rstrip("\x00")
             elif tlv_type == TLV_INTERFACE_NAME:
