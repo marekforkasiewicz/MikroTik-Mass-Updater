@@ -236,6 +236,16 @@
       @confirm="confirmDeleteAction"
       @cancel="showDeleteConfirm = false"
     />
+
+    <!-- Upgrade Modal -->
+    <UpgradeModal
+      :visible="showUpgradeModal"
+      :router="upgradeModalRouter"
+      :taskId="upgradeModalTaskId"
+      :upgradeType="upgradeModalType"
+      @close="closeUpgradeModal"
+      @complete="onUpgradeComplete"
+    />
   </div>
 </template>
 
@@ -244,6 +254,7 @@ import { ref, computed } from 'vue'
 import { useMainStore } from '../stores/main'
 import { scanApi, taskApi } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
+import UpgradeModal from './UpgradeModal.vue'
 
 const store = useMainStore()
 
@@ -411,7 +422,17 @@ const formatDate = (dateStr) => {
 const upgradingFirmware = ref({})
 const upgradingRouterOS = ref({})
 
+// Upgrade modal state
+const showUpgradeModal = ref(false)
+const upgradeModalRouter = ref(null)
+const upgradeModalTaskId = ref(null)
+const upgradeModalType = ref('firmware')
+
 const upgradeFirmware = async (router) => {
+  if (!router || !router.id) {
+    store.addNotification('error', 'Invalid router data')
+    return
+  }
   if (!router.is_online) {
     store.addNotification('error', `Router ${router.ip} is offline`)
     return
@@ -421,22 +442,46 @@ const upgradeFirmware = async (router) => {
     return
   }
 
+  // Open upgrade modal
+  upgradeModalRouter.value = router
+  upgradeModalType.value = 'firmware'
+  showUpgradeModal.value = true
+
   upgradingFirmware.value[router.id] = true
   try {
-    await taskApi.startUpdate({
+    const response = await taskApi.startUpdate({
       router_ids: [router.id],
       upgrade_firmware: true,
       dry_run: false
     })
-    store.addNotification('success', `Firmware upgrade started for ${router.identity || router.ip}`)
+    // Set task ID to trigger WebSocket connection in modal
+    if (response && response.id) {
+      upgradeModalTaskId.value = response.id
+    } else {
+      throw new Error('Invalid response from server')
+    }
   } catch (error) {
-    store.addNotification('error', `Firmware upgrade failed: ${error.message}`)
-  } finally {
-    upgradingFirmware.value[router.id] = false
+    console.error('Firmware upgrade error:', error)
+    // Extract meaningful error message
+    let errorMsg = error.message || 'Unknown error'
+    if (error.response?.data?.detail) {
+      errorMsg = typeof error.response.data.detail === 'string'
+        ? error.response.data.detail
+        : JSON.stringify(error.response.data.detail)
+    }
+    store.addNotification('error', `Firmware upgrade failed: ${errorMsg}`)
+    showUpgradeModal.value = false
+    if (router?.id) {
+      upgradingFirmware.value[router.id] = false
+    }
   }
 }
 
 const upgradeRouterOS = async (router) => {
+  if (!router || !router.id) {
+    store.addNotification('error', 'Invalid router data')
+    return
+  }
   if (!router.is_online) {
     store.addNotification('error', `Router ${router.ip} is offline`)
     return
@@ -446,18 +491,59 @@ const upgradeRouterOS = async (router) => {
     return
   }
 
+  // Open upgrade modal
+  upgradeModalRouter.value = router
+  upgradeModalType.value = 'routeros'
+  showUpgradeModal.value = true
+
   upgradingRouterOS.value[router.id] = true
   try {
-    await taskApi.startUpdate({
+    const response = await taskApi.startUpdate({
       router_ids: [router.id],
       upgrade_firmware: false,
       dry_run: false
     })
-    store.addNotification('success', `RouterOS upgrade started for ${router.identity || router.ip}`)
+    // Set task ID to trigger WebSocket connection in modal
+    if (response && response.id) {
+      upgradeModalTaskId.value = response.id
+    } else {
+      throw new Error('Invalid response from server')
+    }
   } catch (error) {
-    store.addNotification('error', `RouterOS upgrade failed: ${error.message}`)
-  } finally {
-    upgradingRouterOS.value[router.id] = false
+    console.error('RouterOS upgrade error:', error)
+    // Extract meaningful error message
+    let errorMsg = error.message || 'Unknown error'
+    if (error.response?.data?.detail) {
+      errorMsg = typeof error.response.data.detail === 'string'
+        ? error.response.data.detail
+        : JSON.stringify(error.response.data.detail)
+    }
+    store.addNotification('error', `RouterOS upgrade failed: ${errorMsg}`)
+    showUpgradeModal.value = false
+    if (router?.id) {
+      upgradingRouterOS.value[router.id] = false
+    }
+  }
+}
+
+const closeUpgradeModal = async () => {
+  showUpgradeModal.value = false
+  upgradeModalTaskId.value = null
+  // Reset upgrade state for the router
+  if (upgradeModalRouter.value) {
+    upgradingFirmware.value[upgradeModalRouter.value.id] = false
+    upgradingRouterOS.value[upgradeModalRouter.value.id] = false
+  }
+  upgradeModalRouter.value = null
+  // Always refresh router list when modal closes
+  await store.fetchRouters()
+}
+
+const onUpgradeComplete = async (data) => {
+  // Refresh router list after successful upgrade
+  await store.fetchRouters()
+  if (data?.success) {
+    store.addNotification('success', `Upgrade completed for ${data.router?.identity || data.router?.ip || 'router'}`)
   }
 }
 </script>
