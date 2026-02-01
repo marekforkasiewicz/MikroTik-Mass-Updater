@@ -25,6 +25,10 @@ class TopologyService:
         edges = []
         router_map = {}  # Map IP to router for edge creation
 
+        # Find main router first
+        main_router = self._find_main_router(routers)
+        main_router_id = main_router.id if main_router else None
+
         for router in routers:
             router_map[router.ip] = router
 
@@ -55,31 +59,43 @@ class TopologyService:
                     status = "online"
                     color = "#0d6efd"  # blue
 
-            # Determine node shape based on model
-            shape = "dot"
-            if router.model:
+            # Determine node shape and size
+            is_main = router.id == main_router_id
+            shape = "star" if is_main else "dot"
+            size = 35 if is_main else 20
+
+            if not is_main and router.model:
                 model_lower = router.model.lower()
                 if "ccr" in model_lower:
-                    shape = "diamond"  # Core router
+                    shape = "diamond"
+                    size = 25
                 elif "crs" in model_lower:
-                    shape = "square"  # Switch
+                    shape = "square"
+                    size = 22
                 elif "cap" in model_lower or "wap" in model_lower:
-                    shape = "triangle"  # AP
-                else:
-                    shape = "dot"  # Regular router
+                    shape = "triangle"
+                    size = 22
+                elif "sxt" in model_lower or "lhg" in model_lower:
+                    shape = "triangleDown"
+                    size = 22
+
+            # Main router styling
+            border_width = 3 if is_main else 2
+            font_size = 14 if is_main else 12
 
             nodes.append({
                 "id": router.id,
                 "label": router.identity or router.ip,
-                "title": self._build_node_tooltip(router),
+                "title": self._build_node_tooltip(router, is_main),
                 "ip": router.ip,
                 "model": router.model,
                 "version": router.ros_version,
                 "status": status,
-                "color": color,
+                "color": {"background": color, "border": "#000" if is_main else color},
                 "shape": shape,
-                "size": 25 if shape == "diamond" else 20,
-                "font": {"size": 12}
+                "size": size,
+                "borderWidth": border_width,
+                "font": {"size": font_size, "bold": is_main}
             })
 
         # Try to discover edges from neighbor data
@@ -96,10 +112,12 @@ class TopologyService:
             }
         }
 
-    def _build_node_tooltip(self, router: Router) -> str:
+    def _build_node_tooltip(self, router: Router, is_main: bool = False) -> str:
         """Build HTML tooltip for a node"""
+        role = "⭐ Edge Router (Gateway)" if is_main else "Router"
         lines = [
             f"<b>{router.identity or 'Unknown'}</b>",
+            f"Role: {role}",
             f"IP: {router.ip}",
         ]
         if router.model:
@@ -119,44 +137,78 @@ class TopologyService:
 
         # Build IP to router ID map
         ip_to_id = {r.ip: r.id for r in routers}
+        id_to_router = {r.id: r for r in routers}
 
-        # First try to use stored neighbor data
-        for router in routers:
-            if not router.is_online:
-                continue
+        # Find the main/edge router (gateway)
+        main_router = self._find_main_router(routers)
 
-            if router.neighbors:
-                for neighbor in router.neighbors:
-                    neighbor_ip = neighbor.get("address")
-                    if neighbor_ip and neighbor_ip in ip_to_id:
-                        neighbor_id = ip_to_id[neighbor_ip]
-                        edge_key = tuple(sorted([router.id, neighbor_id]))
-                        if edge_key not in seen_edges:
-                            seen_edges.add(edge_key)
+        if main_router and main_router.neighbors:
+            # Only show connections FROM the main router
+            # These are the real physical connections
+            for neighbor in main_router.neighbors:
+                neighbor_ip = neighbor.get("address")
+                if neighbor_ip and neighbor_ip in ip_to_id:
+                    neighbor_id = ip_to_id[neighbor_ip]
+                    neighbor_router = id_to_router.get(neighbor_id)
 
-                            # Clean up interface name for display
-                            interface = neighbor.get("interface", "")
-                            # Extract just the port name (e.g., "ether3" from "ether3,bridgeLocal")
-                            port_name = interface.split(",")[0] if interface else ""
+                    edge_key = tuple(sorted([main_router.id, neighbor_id]))
+                    if edge_key not in seen_edges:
+                        seen_edges.add(edge_key)
 
-                            # Build label with both ports if available
-                            label = port_name
+                        # Clean up interface name for display
+                        interface = neighbor.get("interface", "")
+                        port_name = interface.split(",")[0] if interface else ""
 
-                            edges.append({
-                                "from": router.id,
-                                "to": neighbor_id,
-                                "label": label,
-                                "title": f"{router.identity or router.ip} [{port_name}] ↔ {neighbor.get('identity', neighbor_ip)}",
-                                "font": {"size": 10, "align": "middle"},
-                                "width": 2,
-                                "color": {"color": "#6c757d", "opacity": 0.8}
-                            })
+                        # Determine edge style based on device type
+                        color = "#6c757d"
+                        dashes = False
+                        width = 2
 
-        # If no edges found, create inferred topology
+                        if neighbor_router and neighbor_router.model:
+                            model_lower = neighbor_router.model.lower()
+                            if "sxt" in model_lower or "lhg" in model_lower:
+                                dashes = True
+                                color = "#17a2b8"  # cyan for wireless
+                            elif "cap" in model_lower or "wap" in model_lower:
+                                color = "#28a745"  # green for APs
+
+                        neighbor_name = neighbor.get('identity') or neighbor_ip
+
+                        edges.append({
+                            "from": main_router.id,
+                            "to": neighbor_id,
+                            "label": port_name,
+                            "title": f"{main_router.identity} [{port_name}] → {neighbor_name}",
+                            "font": {"size": 11, "align": "horizontal", "strokeWidth": 3, "strokeColor": "#ffffff"},
+                            "width": width,
+                            "dashes": dashes,
+                            "color": {"color": color, "opacity": 0.9},
+                            "arrows": {"to": {"enabled": True, "scaleFactor": 0.5}}
+                        })
+
+        # If no edges found from main router, try inferred topology
         if not edges:
             edges = self._infer_topology(routers)
 
         return edges
+
+    def _find_main_router(self, routers: List[Router]) -> Optional[Router]:
+        """Find the main/edge router (gateway)"""
+        # Look for keywords in identity
+        keywords = ['glowny', 'main', 'core', 'gateway', 'edge', 'brzegowy', 'router']
+
+        for router in routers:
+            if router.identity:
+                identity_lower = router.identity.lower()
+                if any(kw in identity_lower for kw in keywords):
+                    return router
+
+        # Fallback: router with lowest IP (usually .1 or .2)
+        online_routers = [r for r in routers if r.is_online]
+        if online_routers:
+            return min(online_routers, key=lambda r: tuple(map(int, r.ip.split('.'))))
+
+        return routers[0] if routers else None
 
     def _infer_topology(self, routers: List[Router]) -> List[Dict[str, Any]]:
         """Infer network topology when no neighbor data available"""
@@ -166,22 +218,8 @@ class TopologyService:
         if len(routers) < 2:
             return edges
 
-        # Find the main router (likely gateway) - usually .1 or .2 in subnet
-        # Or the one with "main", "core", "gateway" in identity
-        main_router = None
-        for router in routers:
-            if router.identity:
-                identity_lower = router.identity.lower()
-                if any(kw in identity_lower for kw in ['main', 'core', 'gateway', 'glowny', 'router']):
-                    main_router = router
-                    break
-
-        # Fallback: router with lowest IP in the subnet
-        if not main_router:
-            online_routers = [r for r in routers if r.is_online]
-            if online_routers:
-                main_router = min(online_routers, key=lambda r: tuple(map(int, r.ip.split('.'))))
-
+        # Find the main router
+        main_router = self._find_main_router(routers)
         if not main_router:
             main_router = routers[0]
 
