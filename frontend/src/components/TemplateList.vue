@@ -561,6 +561,153 @@
       </div>
     </div>
 
+    <!-- Profile Edit Modal -->
+    <div class="modal fade" id="profileEditModal" tabindex="-1" ref="profileEditModalEl">
+      <div class="modal-dialog modal-lg">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">{{ editingProfile?.id ? 'Edit Profile' : 'New Profile' }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body" v-if="editingProfile">
+            <div class="row mb-3">
+              <div class="col-md-8">
+                <label class="form-label">Name <span class="text-danger">*</span></label>
+                <input type="text" class="form-control" v-model="editingProfile.name"
+                       placeholder="e.g., hAP Standard Config" />
+              </div>
+              <div class="col-md-4">
+                <label class="form-label">Status</label>
+                <div class="form-check form-switch mt-2">
+                  <input type="checkbox" class="form-check-input" v-model="editingProfile.is_active" />
+                  <label class="form-check-label">Active</label>
+                </div>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Description</label>
+              <textarea class="form-control" v-model="editingProfile.description" rows="2"></textarea>
+            </div>
+
+            <div class="row mb-3">
+              <div class="col-md-6">
+                <label class="form-label">Model Filter (glob patterns)</label>
+                <input type="text" class="form-control" v-model="profileModelFilter"
+                       placeholder="e.g., hAP*, RB4011*" />
+                <small class="text-muted">Comma-separated patterns. Use * for wildcard.</small>
+              </div>
+              <div class="col-md-6">
+                <label class="form-label">Architecture Filter</label>
+                <input type="text" class="form-control" v-model="profileArchFilter"
+                       placeholder="e.g., arm, arm64, tile" />
+                <small class="text-muted">Comma-separated architectures.</small>
+              </div>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Templates</label>
+              <select class="form-select" v-model="editingProfile.template_ids" multiple size="5">
+                <option v-for="template in templates" :key="template.id" :value="template.id">
+                  {{ template.name }} ({{ template.category }})
+                </option>
+              </select>
+              <small class="text-muted">Select templates to include in this profile.</small>
+            </div>
+
+            <div class="mb-3">
+              <label class="form-label">Profile Variables (JSON)</label>
+              <textarea class="form-control font-monospace" v-model="profileVariablesJson" rows="3"
+                        placeholder='{"dns_primary": "8.8.8.8"}'></textarea>
+              <small class="text-muted">Default variable values for this profile.</small>
+            </div>
+
+            <!-- Matching Routers Preview -->
+            <div v-if="editingProfile.id && matchingRouters.length > 0" class="mb-3">
+              <label class="form-label">Matching Routers ({{ matchingRouters.length }})</label>
+              <div class="border rounded p-2" style="max-height: 120px; overflow-y: auto;">
+                <span v-for="router in matchingRouters" :key="router.id" class="badge bg-secondary me-1 mb-1">
+                  {{ router.identity || router.ip }}
+                </span>
+              </div>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Cancel</button>
+            <button type="button" class="btn btn-primary" @click="saveProfile" :disabled="savingProfile">
+              <span v-if="savingProfile" class="spinner-border spinner-border-sm me-1"></span>
+              Save Profile
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Deployment History Modal -->
+    <div class="modal fade" id="historyModal" tabindex="-1" ref="historyModalEl">
+      <div class="modal-dialog modal-xl">
+        <div class="modal-content">
+          <div class="modal-header">
+            <h5 class="modal-title">Deployment History: {{ editingTemplate?.name }}</h5>
+            <button type="button" class="btn-close" data-bs-dismiss="modal"></button>
+          </div>
+          <div class="modal-body">
+            <div v-if="loadingHistory" class="text-center py-4">
+              <div class="spinner-border text-primary"></div>
+            </div>
+            <div v-else-if="deploymentHistory.length === 0" class="text-center text-muted py-4">
+              <i class="bi bi-clock-history fs-1"></i>
+              <p class="mt-2">No deployment history found</p>
+            </div>
+            <div v-else class="table-responsive">
+              <table class="table table-sm table-hover">
+                <thead>
+                  <tr>
+                    <th>Date</th>
+                    <th>Router</th>
+                    <th>Status</th>
+                    <th>Details</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  <tr v-for="deploy in deploymentHistory" :key="deploy.id">
+                    <td>{{ formatDate(deploy.deployed_at) }}</td>
+                    <td>Router #{{ deploy.router_id }}</td>
+                    <td>
+                      <span :class="getDeployStatusBadge(deploy.status)">
+                        {{ deploy.status }}
+                      </span>
+                    </td>
+                    <td>
+                      <button class="btn btn-sm btn-outline-info" @click="showDeployDetails(deploy)"
+                              v-if="deploy.rendered_content">
+                        <i class="bi bi-eye"></i>
+                      </button>
+                      <span v-if="deploy.error_message" class="text-danger small ms-2">
+                        {{ truncate(deploy.error_message, 30) }}
+                      </span>
+                    </td>
+                  </tr>
+                </tbody>
+              </table>
+            </div>
+            <div v-if="selectedDeployDetail" class="mt-3">
+              <div class="d-flex justify-content-between align-items-center mb-2">
+                <strong>Rendered Content</strong>
+                <button class="btn btn-sm btn-outline-secondary" @click="selectedDeployDetail = null">
+                  Close
+                </button>
+              </div>
+              <pre class="bg-dark text-light p-3 rounded" style="max-height: 300px; overflow-y: auto;">{{ selectedDeployDetail }}</pre>
+            </div>
+          </div>
+          <div class="modal-footer">
+            <button type="button" class="btn btn-secondary" data-bs-dismiss="modal">Close</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
     <!-- Delete Confirmation -->
     <ConfirmModal
       :visible="showDeleteModal"
@@ -626,6 +773,19 @@ let deployWebSocket = null
 
 // Profiles
 const showProfilesModal = ref(false)
+const showProfileEditModal = ref(false)
+const editingProfile = ref(null)
+const savingProfile = ref(false)
+const profileModelFilter = ref('')
+const profileArchFilter = ref('')
+const profileVariablesJson = ref('{}')
+const matchingRouters = ref([])
+
+// Deployment History
+const showHistoryModal = ref(false)
+const deploymentHistory = ref([])
+const loadingHistory = ref(false)
+const selectedDeployDetail = ref(null)
 
 // Help
 const showHelpModal = ref(false)
@@ -639,10 +799,14 @@ const deleting = ref(false)
 const previewModalEl = ref(null)
 const deployModalEl = ref(null)
 const profilesModalEl = ref(null)
+const profileEditModalEl = ref(null)
+const historyModalEl = ref(null)
 const helpModalEl = ref(null)
 let previewModal = null
 let deployModal = null
 let profilesModal = null
+let profileEditModal = null
+let historyModal = null
 let helpModal = null
 
 // Computed
@@ -683,6 +847,8 @@ onMounted(async () => {
     if (previewModalEl.value) previewModal = new Modal(previewModalEl.value)
     if (deployModalEl.value) deployModal = new Modal(deployModalEl.value)
     if (profilesModalEl.value) profilesModal = new Modal(profilesModalEl.value)
+    if (profileEditModalEl.value) profileEditModal = new Modal(profileEditModalEl.value)
+    if (historyModalEl.value) historyModal = new Modal(historyModalEl.value)
     if (helpModalEl.value) helpModal = new Modal(helpModalEl.value)
   })
 })
@@ -693,6 +859,14 @@ watch(showDeployModal, (val) => {
 
 watch(showProfilesModal, (val) => {
   if (val) profilesModal?.show()
+})
+
+watch(showProfileEditModal, (val) => {
+  if (val) profileEditModal?.show()
+})
+
+watch(showHistoryModal, (val) => {
+  if (val) historyModal?.show()
 })
 
 watch(showHelpModal, (val) => {
@@ -1104,20 +1278,135 @@ function getStatusBadgeClass(status) {
   }
 }
 
-function showDeployments() {
-  // TODO: Show deployment history
-  mainStore.addNotification('info', 'Deployment history coming soon')
+async function showDeployments() {
+  if (!editingTemplate.value?.id) return
+
+  loadingHistory.value = true
+  deploymentHistory.value = []
+  selectedDeployDetail.value = null
+
+  try {
+    const response = await templatesApi.listDeployments({ template_id: editingTemplate.value.id })
+    deploymentHistory.value = response.items || []
+  } catch (error) {
+    console.error('Failed to load deployment history:', error)
+    mainStore.addNotification('error', 'Failed to load history')
+  } finally {
+    loadingHistory.value = false
+  }
+
+  showHistoryModal.value = true
+}
+
+function showDeployDetails(deploy) {
+  selectedDeployDetail.value = deploy.rendered_content
+}
+
+function getDeployStatusBadge(status) {
+  switch (status) {
+    case 'completed': return 'badge bg-success'
+    case 'failed': return 'badge bg-danger'
+    case 'running': return 'badge bg-primary'
+    case 'pending': return 'badge bg-warning'
+    default: return 'badge bg-secondary'
+  }
+}
+
+function formatDate(dateStr) {
+  if (!dateStr) return ''
+  const date = new Date(dateStr)
+  return date.toLocaleString()
 }
 
 // Profile methods
 function newProfile() {
-  // TODO: Implement profile creation modal
-  mainStore.addNotification('info', 'Profile creation coming soon')
+  editingProfile.value = {
+    name: '',
+    description: '',
+    device_filter: { model: [], architecture: [] },
+    template_ids: [],
+    variables: {},
+    is_active: true
+  }
+  profileModelFilter.value = ''
+  profileArchFilter.value = ''
+  profileVariablesJson.value = '{}'
+  matchingRouters.value = []
+  showProfileEditModal.value = true
 }
 
 function editProfile(profile) {
-  // TODO: Implement profile editing
-  mainStore.addNotification('info', 'Profile editing coming soon')
+  editingProfile.value = {
+    ...profile,
+    template_ids: profile.template_ids || []
+  }
+  profileModelFilter.value = (profile.device_filter?.model || []).join(', ')
+  profileArchFilter.value = (profile.device_filter?.architecture || []).join(', ')
+  profileVariablesJson.value = JSON.stringify(profile.variables || {}, null, 2)
+  loadMatchingRouters(profile.id)
+  showProfileEditModal.value = true
+}
+
+async function loadMatchingRouters(profileId) {
+  try {
+    const response = await templatesApi.getProfileRouters(profileId)
+    matchingRouters.value = response.routers || []
+  } catch (error) {
+    matchingRouters.value = []
+  }
+}
+
+async function saveProfile() {
+  if (!editingProfile.value.name) {
+    mainStore.addNotification('warning', 'Name is required')
+    return
+  }
+
+  // Parse filters
+  const modelPatterns = profileModelFilter.value
+    ? profileModelFilter.value.split(',').map(s => s.trim()).filter(s => s)
+    : []
+  const archPatterns = profileArchFilter.value
+    ? profileArchFilter.value.split(',').map(s => s.trim()).filter(s => s)
+    : []
+
+  // Parse variables JSON
+  let variables = {}
+  try {
+    if (profileVariablesJson.value.trim()) {
+      variables = JSON.parse(profileVariablesJson.value)
+    }
+  } catch (e) {
+    mainStore.addNotification('error', 'Invalid JSON in variables')
+    return
+  }
+
+  const profileData = {
+    name: editingProfile.value.name,
+    description: editingProfile.value.description,
+    device_filter: { model: modelPatterns, architecture: archPatterns },
+    template_ids: editingProfile.value.template_ids,
+    variables: variables,
+    is_active: editingProfile.value.is_active
+  }
+
+  savingProfile.value = true
+  try {
+    if (editingProfile.value.id) {
+      await templatesApi.updateProfile(editingProfile.value.id, profileData)
+    } else {
+      await templatesApi.createProfile(profileData)
+    }
+    await loadProfiles()
+    profileEditModal?.hide()
+    showProfileEditModal.value = false
+    mainStore.addNotification('success', 'Profile saved')
+  } catch (error) {
+    console.error('Failed to save profile:', error)
+    mainStore.addNotification('error', 'Failed to save profile: ' + error.message)
+  } finally {
+    savingProfile.value = false
+  }
 }
 
 async function deleteProfile(profile) {
