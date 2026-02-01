@@ -4,16 +4,12 @@ services:
       context: ..
       dockerfile: docker/Dockerfile
     container_name: mikrotik-updater
-    # Host network for access to local network routers
     network_mode: host
     volumes:
-      - mikrotik-data:/app/data
+      - ../data:/app/data
     environment:
       - DATABASE_URL=sqlite:///./data/mikrotik.db
       - LOG_LEVEL=INFO
       - DEFAULT_USERNAME=admin
       - DEFAULT_PASSWORD=
     restart: unless-stopped
-
-volumes:
-  mikrotik-data:

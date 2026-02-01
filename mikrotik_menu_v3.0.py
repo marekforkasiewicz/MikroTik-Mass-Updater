@@ -2,7 +2,7 @@
 
 ####################################################
 # MikroTik Mass Updater - ncurses Menu Interface
-# Version 3.1 (Fixed - No Flickering)
+# Version 3.3 (Added RAM & Architecture display)
 # Interactive Terminal UI + Live Router Status
 ####################################################
 
@@ -14,6 +14,7 @@ import threading
 import queue
 import logging
 import librouteros
+import socket
 from datetime import datetime
 from enum import Enum
 from typing import Optional, List, Dict, Any
@@ -58,8 +59,26 @@ class RouterStatus:
     firmware: str = "N/A"
     update_tree: str = "N/A"
     uptime: str = "N/A"
+    memory_mb: int = 0
+    architecture: str = "N/A"
     status: str = "Checking..."
     success: bool = False
+
+
+@dataclass
+class QuickScanResult:
+    """Quick scan result for a router"""
+    ip: str
+    ping_ok: bool = False
+    ping_ms: float = 0.0
+    port_api_open: bool = False
+    port_ssh_open: bool = False
+    ros_version: str = "N/A"
+    identity: str = "N/A"
+    memory_mb: int = 0
+    architecture: str = "N/A"
+    status: str = "Checking..."
+    has_credentials: bool = False
 
 
 class SafeScreen:
@@ -191,6 +210,11 @@ class UpdateTreeMenu:
         self._discovery_in_progress = False
         self._discovery_thread = None
 
+        # Quick scan storage
+        self._quick_scan_results: List[QuickScanResult] = []
+        self._quick_scan_in_progress = False
+        self._quick_scan_thread = None
+
         # Screen wrapper
         self.screen: Optional[SafeScreen] = None
 
@@ -219,6 +243,28 @@ class UpdateTreeMenu:
             self._discovery_in_progress = value
             self._needs_redraw = True
 
+    @property
+    def quick_scan_results(self) -> List[QuickScanResult]:
+        with self._status_lock:
+            return list(self._quick_scan_results)
+
+    @quick_scan_results.setter
+    def quick_scan_results(self, value: List[QuickScanResult]):
+        with self._status_lock:
+            self._quick_scan_results = value
+            self._needs_redraw = True
+
+    @property
+    def quick_scan_in_progress(self) -> bool:
+        with self._status_lock:
+            return self._quick_scan_in_progress
+
+    @quick_scan_in_progress.setter
+    def quick_scan_in_progress(self, value: bool):
+        with self._status_lock:
+            self._quick_scan_in_progress = value
+            self._needs_redraw = True
+
     def init_colors(self):
         """Initialize color pairs"""
         try:
@@ -241,7 +287,7 @@ class UpdateTreeMenu:
         if not self.screen:
             return
 
-        header = " MikroTik Mass Updater v3.1 - Network Status Monitor "
+        header = " MikroTik Mass Updater v3.3 - Network Status Monitor "
         width = self.screen.width
 
         # Center and pad header
@@ -337,10 +383,13 @@ class UpdateTreeMenu:
 
             # Get system resource
             try:
-                res_data = list(api.path('/system/resource').select('version', 'uptime'))
+                res_data = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
                 if res_data:
                     status.os_version = res_data[0].get('version', 'N/A')
                     status.uptime = res_data[0].get('uptime', 'N/A')
+                    total_mem = int(res_data[0].get('total-memory', 0))
+                    status.memory_mb = total_mem // (1024 * 1024)
+                    status.architecture = res_data[0].get('architecture-name', 'N/A')
             except Exception as e:
                 logger.debug(f"Resource query failed for {host_info['ip']}: {e}")
 
@@ -423,6 +472,282 @@ class UpdateTreeMenu:
         self._discovery_thread = threading.Thread(target=discovery_worker, daemon=True)
         self._discovery_thread.start()
 
+    def ping_host(self, ip: str, timeout: int = 2) -> tuple:
+        """Ping a host and return (success, latency_ms)"""
+        try:
+            # Use system ping command
+            result = subprocess.run(
+                ['ping', '-c', '1', '-W', str(timeout), ip],
+                capture_output=True,
+                text=True,
+                timeout=timeout + 1
+            )
+            if result.returncode == 0:
+                # Extract ping time from output
+                output = result.stdout
+                if 'time=' in output:
+                    time_str = output.split('time=')[1].split()[0]
+                    latency = float(time_str.replace('ms', ''))
+                    return True, latency
+                return True, 0.0
+            return False, 0.0
+        except Exception as e:
+            logger.debug(f"Ping failed for {ip}: {e}")
+            return False, 0.0
+
+    def check_port(self, ip: str, port: int, timeout: int = 2) -> bool:
+        """Check if a TCP port is open"""
+        try:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            sock.settimeout(timeout)
+            result = sock.connect_ex((ip, port))
+            sock.close()
+            return result == 0
+        except Exception as e:
+            logger.debug(f"Port check failed for {ip}:{port}: {e}")
+            return False
+
+    def quick_scan_router(self, host_info: Dict[str, Any], result_queue: queue.Queue):
+        """Quick scan a single router"""
+        result = QuickScanResult(ip=host_info['ip'])
+        result.has_credentials = bool(host_info.get('username') and host_info.get('password'))
+
+        # Ping check
+        ping_ok, ping_ms = self.ping_host(host_info['ip'])
+        result.ping_ok = ping_ok
+        result.ping_ms = ping_ms
+
+        if ping_ok:
+            # Check API port
+            result.port_api_open = self.check_port(host_info['ip'], host_info.get('port', 8728))
+            # Check SSH port
+            result.port_ssh_open = self.check_port(host_info['ip'], 22)
+
+            # Try to get RouterOS version if we have credentials and API is open
+            if result.port_api_open and result.has_credentials:
+                api = None
+                try:
+                    api = librouteros.connect(
+                        host=host_info['ip'],
+                        username=host_info['username'],
+                        password=host_info['password'],
+                        port=host_info.get('port', 8728),
+                        timeout=5
+                    )
+                    # Get identity
+                    try:
+                        identity_data = list(api.path('/system/identity').select('name'))
+                        if identity_data:
+                            result.identity = identity_data[0].get('name', 'N/A')
+                    except Exception:
+                        pass
+
+                    # Get version, memory and architecture
+                    try:
+                        res_data = list(api.path('/system/resource').select('version', 'total-memory', 'architecture-name'))
+                        if res_data:
+                            result.ros_version = res_data[0].get('version', 'N/A')
+                            total_mem = int(res_data[0].get('total-memory', 0))
+                            result.memory_mb = total_mem // (1024 * 1024)
+                            result.architecture = res_data[0].get('architecture-name', 'N/A')
+                    except Exception:
+                        pass
+
+                    result.status = "Online"
+                except Exception as e:
+                    error_msg = str(e)[:20]
+                    result.status = f"API err: {error_msg}"
+                    logger.debug(f"API connection failed for {host_info['ip']}: {e}")
+                finally:
+                    if api:
+                        try:
+                            api.close()
+                        except Exception:
+                            pass
+            elif result.port_api_open:
+                result.status = "Online (no creds)"
+            else:
+                result.status = "Online (API closed)"
+        else:
+            result.status = "Offline"
+
+        result_queue.put(result)
+
+    def start_quick_scan(self):
+        """Start quick network scan in background"""
+        if self.quick_scan_in_progress:
+            return
+
+        hosts = self.parse_host_file('list.txt')
+        if not hosts:
+            logger.warning("No hosts found in list.txt")
+            return
+
+        self.quick_scan_in_progress = True
+
+        # Initialize with "Checking..." status
+        with self._status_lock:
+            self._quick_scan_results = [
+                QuickScanResult(ip=host['ip'], status="Checking...")
+                for host in hosts
+            ]
+
+        def scan_worker():
+            result_queue = queue.Queue()
+            threads = []
+
+            for host in hosts:
+                t = threading.Thread(
+                    target=self.quick_scan_router,
+                    args=(host, result_queue),
+                    daemon=True
+                )
+                threads.append(t)
+                t.start()
+
+            # Wait for all threads
+            for t in threads:
+                t.join(timeout=15)
+
+            # Collect results
+            results = []
+            while not result_queue.empty():
+                try:
+                    results.append(result_queue.get_nowait())
+                except queue.Empty:
+                    break
+
+            # Sort by IP to maintain order
+            results.sort(key=lambda x: tuple(map(int, x.ip.split('.'))))
+
+            self.quick_scan_results = results
+            self.quick_scan_in_progress = False
+            logger.info(f"Quick scan complete: {len(results)} routers scanned")
+
+        self._quick_scan_thread = threading.Thread(target=scan_worker, daemon=True)
+        self._quick_scan_thread.start()
+
+    def draw_quick_scan_table(self):
+        """Draw quick scan results table"""
+        if not self.screen:
+            return
+
+        height = self.screen.height
+        width = self.screen.width
+
+        self.screen.erase()
+        self.draw_header()
+
+        # Title
+        title = "QUICK NETWORK SCAN"
+        self.screen.safe_addstr(2, 2, title,
+                                curses.color_pair(Color.INFO) | curses.A_BOLD)
+
+        # Scan status indicator
+        if self.quick_scan_in_progress:
+            spinner_chars = "⠋⠙⠹⠸⠼⠴⠦⠧⠇⠏"
+            import time
+            spinner = spinner_chars[int(time.time() * 10) % len(spinner_chars)]
+            self.screen.safe_addstr(2, width - 16, f"{spinner} Scanning...",
+                                    curses.color_pair(Color.WARNING))
+
+        # Table separator
+        self.screen.safe_hline(3, 2, curses.ACS_HLINE, width - 4)
+
+        # Column widths
+        if width >= 140:
+            cols = {'ip': 16, 'ping': 6, 'ms': 7, 'api': 5, 'ssh': 5, 'version': 14, 'identity': 14, 'ram': 6, 'arch': 7, 'status': 16}
+        elif width >= 120:
+            cols = {'ip': 16, 'ping': 5, 'ms': 6, 'api': 4, 'ssh': 4, 'version': 12, 'identity': 12, 'ram': 5, 'arch': 6, 'status': 14}
+        elif width >= 90:
+            cols = {'ip': 16, 'ping': 5, 'ms': 6, 'api': 4, 'ssh': 4, 'version': 12, 'identity': 0, 'ram': 5, 'arch': 6, 'status': 12}
+        else:
+            cols = {'ip': 15, 'ping': 4, 'ms': 5, 'api': 4, 'ssh': 4, 'version': 10, 'identity': 0, 'ram': 5, 'arch': 5, 'status': 10}
+
+        # Build header
+        header_parts = []
+        header_parts.append(f"{'IP':<{cols['ip']}}")
+        header_parts.append(f"{'Ping':<{cols['ping']}}")
+        header_parts.append(f"{'ms':<{cols['ms']}}")
+        header_parts.append(f"{'API':<{cols['api']}}")
+        header_parts.append(f"{'SSH':<{cols['ssh']}}")
+        header_parts.append(f"{'RouterOS':<{cols['version']}}")
+        if cols['identity']:
+            header_parts.append(f"{'Identity':<{cols['identity']}}")
+        header_parts.append(f"{'RAM':<{cols['ram']}}")
+        header_parts.append(f"{'Arch':<{cols['arch']}}")
+        header_parts.append(f"{'Status':<{cols['status']}}")
+
+        header = " | ".join(header_parts)
+        self.screen.safe_addstr(4, 2, header,
+                                curses.color_pair(Color.HEADER) | curses.A_BOLD)
+
+        self.screen.safe_hline(5, 2, curses.ACS_HLINE, width - 4)
+
+        # Data rows
+        results = self.quick_scan_results
+        row = 6
+        max_rows = height - 5
+
+        for result in results:
+            if row >= max_rows:
+                remaining = len(results) - (row - 6)
+                self.screen.safe_addstr(row, 2, f"... and {remaining} more",
+                                        curses.color_pair(Color.WARNING))
+                break
+
+            # Choose color based on status
+            if result.ping_ok and result.port_api_open:
+                color = curses.color_pair(Color.SUCCESS)
+            elif result.ping_ok:
+                color = curses.color_pair(Color.WARNING)
+            else:
+                color = curses.color_pair(Color.ERROR)
+
+            def truncate(s: str, length: int) -> str:
+                if length == 0:
+                    return ""
+                s = s or "N/A"
+                return s[:length-1].ljust(length) if len(s) >= length else s.ljust(length)
+
+            # Build data row
+            row_parts = []
+            row_parts.append(truncate(result.ip, cols['ip']))
+            ping_icon = "✓" if result.ping_ok else "✗"
+            row_parts.append(truncate(ping_icon, cols['ping']))
+            ms_str = f"{result.ping_ms:.1f}" if result.ping_ok else "-"
+            row_parts.append(truncate(ms_str, cols['ms']))
+            api_icon = "✓" if result.port_api_open else "✗"
+            row_parts.append(truncate(api_icon, cols['api']))
+            ssh_icon = "✓" if result.port_ssh_open else "✗"
+            row_parts.append(truncate(ssh_icon, cols['ssh']))
+            row_parts.append(truncate(result.ros_version, cols['version']))
+            if cols['identity']:
+                row_parts.append(truncate(result.identity, cols['identity']))
+            ram_str = f"{result.memory_mb}M" if result.memory_mb > 0 else "-"
+            row_parts.append(truncate(ram_str, cols['ram']))
+            row_parts.append(truncate(result.architecture, cols['arch']))
+            row_parts.append(truncate(result.status, cols['status']))
+
+            data_row = " | ".join(row_parts)
+            self.screen.safe_addstr(row, 2, data_row, color)
+            row += 1
+
+        # Summary line
+        total = len(results)
+        online = sum(1 for r in results if r.ping_ok)
+        api_ok = sum(1 for r in results if r.port_api_open)
+
+        self.screen.safe_hline(height - 4, 2, curses.ACS_HLINE, width - 4)
+
+        summary = f"Total: {total} | Ping OK: {online} | API OK: {api_ok} | Offline: {total - online}"
+        self.screen.safe_addstr(height - 3, 2, summary,
+                                curses.color_pair(Color.INFO) | curses.A_BOLD)
+
+        self.draw_footer("[r]Refresh | [m]Menu | [q]Quit")
+        self.screen.noutrefresh()
+        curses.doupdate()
+
     def draw_status_table(self):
         """Draw router status table"""
         if not self.screen:
@@ -451,20 +776,25 @@ class UpdateTreeMenu:
         self.screen.safe_hline(3, 2, curses.ACS_HLINE, width - 4)
 
         # Column widths (adjusted for screen width)
-        if width >= 140:
+        if width >= 160:
             cols = {
-                'ip': 15, 'identity': 16, 'model': 14,
-                'os': 12, 'fw': 10, 'tree': 12, 'uptime': 15, 'status': 15
+                'ip': 15, 'identity': 14, 'model': 14,
+                'os': 12, 'fw': 10, 'tree': 10, 'ram': 6, 'arch': 7, 'uptime': 12, 'status': 12
+            }
+        elif width >= 140:
+            cols = {
+                'ip': 15, 'identity': 14, 'model': 12,
+                'os': 12, 'fw': 8, 'tree': 10, 'ram': 5, 'arch': 6, 'uptime': 0, 'status': 12
             }
         elif width >= 100:
             cols = {
-                'ip': 15, 'identity': 12, 'model': 12,
-                'os': 10, 'fw': 8, 'tree': 10, 'uptime': 0, 'status': 12
+                'ip': 15, 'identity': 12, 'model': 0,
+                'os': 10, 'fw': 0, 'tree': 10, 'ram': 5, 'arch': 6, 'uptime': 0, 'status': 10
             }
         else:
             cols = {
                 'ip': 15, 'identity': 10, 'model': 0,
-                'os': 10, 'fw': 0, 'tree': 8, 'uptime': 0, 'status': 10
+                'os': 10, 'fw': 0, 'tree': 8, 'ram': 5, 'arch': 5, 'uptime': 0, 'status': 8
             }
 
         # Build header
@@ -475,6 +805,8 @@ class UpdateTreeMenu:
         if cols['os']: header_parts.append(f"{'RouterOS':<{cols['os']}}")
         if cols['fw']: header_parts.append(f"{'FW':<{cols['fw']}}")
         if cols['tree']: header_parts.append(f"{'Tree':<{cols['tree']}}")
+        if cols['ram']: header_parts.append(f"{'RAM':<{cols['ram']}}")
+        if cols['arch']: header_parts.append(f"{'Arch':<{cols['arch']}}")
         if cols['uptime']: header_parts.append(f"{'Uptime':<{cols['uptime']}}")
         if cols['status']: header_parts.append(f"{'Status':<{cols['status']}}")
 
@@ -522,6 +854,10 @@ class UpdateTreeMenu:
             if cols['os']: row_parts.append(truncate(status.os_version, cols['os']))
             if cols['fw']: row_parts.append(truncate(status.firmware, cols['fw']))
             if cols['tree']: row_parts.append(truncate(status.update_tree, cols['tree']))
+            if cols['ram']:
+                ram_str = f"{status.memory_mb}M" if status.memory_mb > 0 else "-"
+                row_parts.append(truncate(ram_str, cols['ram']))
+            if cols['arch']: row_parts.append(truncate(status.architecture, cols['arch']))
             if cols['uptime']: row_parts.append(truncate(status.uptime, cols['uptime']))
             if cols['status']: row_parts.append(f"{status_icon} {truncate(status.status, cols['status']-2)}")
 
@@ -552,13 +888,14 @@ class UpdateTreeMenu:
         self.draw_header()
 
         menu_items = [
-            ("1. Network Status", 'status'),
-            ("2. Credentials", 'creds'),
-            ("3. Choose Update Tree", 'tree'),
-            ("4. Configure Options", 'options'),
-            ("5. Run Update Script", 'run'),
-            ("6. View Last Report", 'report'),
-            ("7. Exit", 'exit'),
+            ("1. Quick Network Scan", 'quickscan'),
+            ("2. Full Network Status", 'status'),
+            ("3. Credentials", 'creds'),
+            ("4. Choose Update Tree", 'tree'),
+            ("5. Configure Options", 'options'),
+            ("6. Run Update Script", 'run'),
+            ("7. View Last Report", 'report'),
+            ("8. Exit", 'exit'),
         ]
 
         y = 3
@@ -923,9 +1260,7 @@ class UpdateTreeMenu:
         selected_tree = 0
         selected_options = 0
 
-        # Start initial discovery
-        self.start_network_discovery()
-
+        # Don't start discovery automatically - user can choose Quick Scan or Full Status
         logger.info("Menu started")
 
         while True:
@@ -950,19 +1285,24 @@ class UpdateTreeMenu:
                     elif key == curses.KEY_DOWN:
                         selected_main = (selected_main + 1) % num_items
                     elif key in (ord('\n'), curses.KEY_ENTER):
-                        if selected_main == 0:  # Network Status
+                        if selected_main == 0:  # Quick Network Scan
+                            self.current_menu = 'quickscan'
+                            self.start_quick_scan()
+                        elif selected_main == 1:  # Full Network Status
                             self.current_menu = 'status'
-                        elif selected_main == 1:  # Credentials
+                            if not self.router_statuses:
+                                self.start_network_discovery()
+                        elif selected_main == 2:  # Credentials
                             self.draw_creds_menu()
-                        elif selected_main == 2:  # Update Tree
+                        elif selected_main == 3:  # Update Tree
                             self.current_menu = 'tree'
                             # Pre-select current tree
                             trees = [UpdateTree.STABLE, UpdateTree.DEVELOPMENT, UpdateTree.TESTING]
                             selected_tree = trees.index(self.selected_tree)
-                        elif selected_main == 3:  # Options
+                        elif selected_main == 4:  # Options
                             self.current_menu = 'options'
                             selected_options = 0
-                        elif selected_main == 4:  # Run Script
+                        elif selected_main == 5:  # Run Script
                             self.run_script_direct(stdscr)
                             # Reinitialize curses
                             curses.cbreak()
@@ -972,7 +1312,7 @@ class UpdateTreeMenu:
                             stdscr.clear()
                             self.screen = SafeScreen(stdscr)
                             self.init_colors()
-                        elif selected_main == 5:  # View Report
+                        elif selected_main == 6:  # View Report
                             self.view_report(stdscr)
                             curses.cbreak()
                             stdscr.keypad(True)
@@ -981,8 +1321,21 @@ class UpdateTreeMenu:
                             stdscr.clear()
                             self.screen = SafeScreen(stdscr)
                             self.init_colors()
-                        elif selected_main == 6:  # Exit
+                        elif selected_main == 7:  # Exit
                             break
+
+                elif self.current_menu == 'quickscan':
+                    self.draw_quick_scan_table()
+                    key = self.screen.getch()
+
+                    if key == -1:
+                        continue
+                    elif key in (ord('q'), ord('m'), 27):
+                        self.current_menu = 'main'
+                    elif key == ord('r'):
+                        self.start_quick_scan()
+                    elif key == curses.KEY_RESIZE:
+                        self.handle_resize()
 
                 elif self.current_menu == 'status':
                     self.draw_status_table()

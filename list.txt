@@ -11,8 +11,14 @@
 #192.168.1.2:8729
 
 # Custom credentials
-#192.168.88.1|admin|password123
-
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
+192.168.1.1|admin|password
 # Custom port and credentials
 #192.168.1.4:8729|admin|password123
 

@@ -38,6 +38,8 @@ class RouterResponse(RouterBase):
     installed_version: Optional[str] = None
     latest_version: Optional[str] = None
     uptime: Optional[str] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     is_online: bool = False
     has_updates: bool = False
     has_firmware_update: bool = False
@@ -74,6 +76,8 @@ class QuickScanResult(BaseModel):
     port_ssh_open: bool = False
     ros_version: Optional[str] = None
     identity: Optional[str] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     status: str = "unknown"
     has_credentials: bool = False
 
@@ -90,5 +94,7 @@ class FullScanResult(BaseModel):
     installed_version: Optional[str] = None
     latest_version: Optional[str] = None
     uptime: Optional[str] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     success: bool = False
     error: Optional[str] = None

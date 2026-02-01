@@ -26,6 +26,8 @@ class QuickScanResult:
     port_ssh_open: bool = False
     ros_version: Optional[str] = None
     identity: Optional[str] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     status: str = "Checking..."
     has_credentials: bool = False
 
@@ -43,6 +45,8 @@ class FullScanResult:
     installed_version: Optional[str] = None
     latest_version: Optional[str] = None
     uptime: Optional[str] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     success: bool = False
     error: Optional[str] = None
 
@@ -162,11 +166,14 @@ class ScanService:
             except Exception:
                 pass
 
-            # Get version
+            # Get version, memory and architecture
             try:
-                res_data = list(api.path('/system/resource').select('version'))
+                res_data = list(api.path('/system/resource').select('version', 'total-memory', 'architecture-name'))
                 if res_data:
                     result.ros_version = res_data[0].get('version')
+                    total_mem = int(res_data[0].get('total-memory', 0))
+                    result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                    result.architecture = res_data[0].get('architecture-name')
             except Exception:
                 pass
 
@@ -232,11 +239,14 @@ class ScanService:
 
             # Get System Resource
             try:
-                res_response = list(api.path('/system/resource').select('version', 'uptime'))
+                res_response = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
                 if res_response:
                     res = res_response[0]
                     result.ros_version = res.get('version')
                     result.uptime = res.get('uptime')
+                    total_mem = int(res.get('total-memory', 0))
+                    result.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                    result.architecture = res.get('architecture-name')
             except Exception as e:
                 logger.debug(f"Resource query failed for {host.ip}: {e}")
 

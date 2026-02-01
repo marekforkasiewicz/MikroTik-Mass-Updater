@@ -40,6 +40,8 @@ class RouterInfo:
     installed_version: str = "N/A"
     latest_version: str = "N/A"
     uptime: str = "N/A"
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     success: bool = False
     error: Optional[str] = None
 
@@ -167,11 +169,14 @@ class RouterService:
 
         try:
             # Get System Resource
-            res_response = list(api.path('/system/resource').select('version', 'uptime'))
+            res_response = list(api.path('/system/resource').select('version', 'uptime', 'total-memory', 'architecture-name'))
             if res_response:
                 res = res_response[0]
                 info.os_version = res.get('version', 'N/A')
                 info.uptime = res.get('uptime', 'N/A')
+                total_mem = int(res.get('total-memory', 0))
+                info.memory_total_mb = total_mem // (1024 * 1024) if total_mem > 0 else None
+                info.architecture = res.get('architecture-name')
         except Exception as e:
             logger.debug(f"Resource query failed for {ip}: {e}")
 

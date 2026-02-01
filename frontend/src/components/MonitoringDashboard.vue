@@ -100,6 +100,8 @@
                 <th>Latency</th>
                 <th>CPU</th>
                 <th>Memory</th>
+                <th>RAM</th>
+                <th>Arch</th>
                 <th>Disk</th>
                 <th>Alerts</th>
                 <th>Last Check</th>
@@ -139,6 +141,18 @@
                       {{ router.memory_usage.toFixed(0) }}%
                     </div>
                   </div>
+                  <span v-else class="text-muted">-</span>
+                </td>
+                <td>
+                  <span v-if="router.memory_total_mb" class="badge bg-secondary">
+                    {{ router.memory_total_mb }}M
+                  </span>
+                  <span v-else class="text-muted">-</span>
+                </td>
+                <td>
+                  <span v-if="router.architecture" class="badge bg-info text-dark">
+                    {{ router.architecture }}
+                  </span>
                   <span v-else class="text-muted">-</span>
                 </td>
                 <td>

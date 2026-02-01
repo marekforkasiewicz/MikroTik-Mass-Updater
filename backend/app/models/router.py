@@ -26,6 +26,8 @@ class Router(Base):
     installed_version = Column(String(50), nullable=True)
     latest_version = Column(String(50), nullable=True)
     uptime = Column(String(100), nullable=True)
+    memory_total_mb = Column(Integer, nullable=True)
+    architecture = Column(String(50), nullable=True)
 
     # Status
     is_online = Column(Boolean, default=False)

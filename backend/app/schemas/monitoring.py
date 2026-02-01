@@ -147,6 +147,8 @@ class RouterMonitoringStatus(BaseModel):
     latency_ms: Optional[float] = None
     cpu_usage: Optional[float] = None
     memory_usage: Optional[float] = None
+    memory_total_mb: Optional[int] = None
+    architecture: Optional[str] = None
     disk_usage: Optional[float] = None
     uptime: Optional[str] = None
     last_check: Optional[datetime] = None

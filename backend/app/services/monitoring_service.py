@@ -219,6 +219,13 @@ class MonitoringService:
                             free_mem = int(res.get("free-memory", 0))
                             if total_mem > 0:
                                 health_check.memory_usage = ((total_mem - free_mem) / total_mem) * 100
+                                # Store total memory in router
+                                router.memory_total_mb = total_mem // (1024 * 1024)
+
+                            # Store architecture in router
+                            arch = res.get("architecture-name")
+                            if arch:
+                                router.architecture = arch
 
                             # Calculate disk usage
                             total_disk = int(res.get("total-hdd-space", 0))
@@ -542,6 +549,8 @@ class MonitoringService:
                 "latency_ms": latest_check.latency_ms if latest_check else None,
                 "cpu_usage": latest_check.cpu_usage if latest_check else None,
                 "memory_usage": latest_check.memory_usage if latest_check else None,
+                "memory_total_mb": router.memory_total_mb,
+                "architecture": router.architecture,
                 "disk_usage": latest_check.disk_usage if latest_check else None,
                 "uptime": router.uptime,
                 "last_check": latest_check.checked_at if latest_check else None,
