@@ -137,6 +137,8 @@ const waitingForReboot = ref(false)
 const rebootCheckTimer = ref(null)
 const canClose = ref(false)
 const lastMessage = ref('')
+const expectedFirmware = ref(null) // Expected firmware version after upgrade
+const previousFirmware = ref(null) // Firmware version before upgrade
 
 const title = computed(() => {
   const routerName = props.router?.identity || props.router?.ip || 'Router'
@@ -252,14 +254,11 @@ const connectWebSocket = (taskId) => {
         handleTaskFailed(data)
       }
 
-      // Handle individual results
+      // Handle individual results (just log, don't start reboot watch - handleTaskComplete does that)
       if (data.results?.results) {
         data.results.results.forEach(result => {
           if (result.success) {
             addConsoleLine(`${result.ip}: Success`, 'success')
-            if (result.firmware_upgraded || result.rebooted) {
-              startRebootWatch()
-            }
           } else {
             addConsoleLine(`${result.ip}: ${result.error}`, 'error')
           }
@@ -275,23 +274,26 @@ const connectWebSocket = (taskId) => {
 }
 
 const handleTaskComplete = (data) => {
-  if (waitingForReboot.value) return
+  // Prevent duplicate handling
+  if (waitingForReboot.value || status.value === 'complete') return
 
   const results = data.results
-  if (results) {
+  if (results && results.results?.length > 0) {
     addConsoleLine(`Completed: ${results.successful} successful, ${results.failed} failed`, 'info')
 
     // Check if reboot is needed
-    const routerResult = results.results?.find(r => r.router_id === props.router?.id || r.ip === props.router?.ip)
+    const routerResult = results.results.find(r => r.router_id === props.router?.id || r.ip === props.router?.ip)
     if (routerResult?.firmware_upgraded || routerResult?.rebooted) {
       startRebootWatch()
       return
     }
-  }
 
-  status.value = 'complete'
-  canClose.value = true
-  addConsoleLine('Upgrade process completed', 'success')
+    // No reboot needed, mark as complete
+    status.value = 'complete'
+    canClose.value = true
+    addConsoleLine('Upgrade process completed', 'success')
+  }
+  // If no results yet, don't mark as complete - wait for message with results
 }
 
 const handleTaskFailed = (data) => {
@@ -314,23 +316,58 @@ const startRebootWatch = () => {
     return
   }
 
+  // Store expected firmware from router's upgrade_firmware field
+  if (props.upgradeType === 'firmware' && props.router?.upgrade_firmware) {
+    expectedFirmware.value = props.router.upgrade_firmware
+    previousFirmware.value = props.router?.firmware
+    addConsoleLine(`Expected firmware after upgrade: ${expectedFirmware.value}`, 'info')
+  }
+
   waitingForReboot.value = true
   addConsoleLine('Router is rebooting, waiting for it to come back online...', 'warning')
 
   let attempts = 0
   const maxAttempts = 60 // 5 minutes max
   const routerId = props.router.id  // Capture router ID to avoid stale props
+  const isFirmwareUpgrade = props.upgradeType === 'firmware'
 
   const checkRouter = async () => {
     attempts++
     try {
       addConsoleLine(`Checking router status (attempt ${attempts})...`, 'muted')
 
-      // Try to scan the router
-      await scanApi.quickScanSingle(routerId)
+      // For firmware upgrade, use checkFirmware to verify
+      if (isFirmwareUpgrade) {
+        const result = await scanApi.checkFirmware(routerId)
 
-      // If we get here, router is back online
-      addConsoleLine('Router is back online!', 'success')
+        if (!result.success) {
+          throw new Error(result.error || 'Failed to connect')
+        }
+
+        // Router is back online
+        addConsoleLine('Router is back online!', 'success')
+
+        // Verify firmware upgrade
+        const currentFw = result.current_firmware
+        const upgradeFw = result.upgrade_firmware
+
+        addConsoleLine(`Current firmware: ${currentFw}`, 'info')
+
+        if (expectedFirmware.value && currentFw === expectedFirmware.value) {
+          addConsoleLine(`Firmware upgrade VERIFIED: ${previousFirmware.value || 'unknown'} -> ${currentFw}`, 'success')
+        } else if (currentFw === upgradeFw) {
+          addConsoleLine('Firmware is up to date (no upgrade needed)', 'success')
+        } else if (currentFw !== upgradeFw && upgradeFw) {
+          addConsoleLine(`WARNING: Firmware still needs upgrade: ${currentFw} -> ${upgradeFw}`, 'warning')
+        } else {
+          addConsoleLine(`Firmware: ${currentFw}`, 'info')
+        }
+      } else {
+        // For RouterOS upgrade, just check connectivity
+        await scanApi.quickScanSingle(routerId)
+        addConsoleLine('Router is back online!', 'success')
+      }
+
       waitingForReboot.value = false
       status.value = 'complete'
       canClose.value = true
@@ -394,6 +431,8 @@ watch(() => props.taskId, (newTaskId) => {
     waitingForReboot.value = false
     canClose.value = false
     lastMessage.value = ''
+    expectedFirmware.value = null
+    previousFirmware.value = null
 
     elapsedTimer.value = setInterval(updateElapsedTime, 1000)
 

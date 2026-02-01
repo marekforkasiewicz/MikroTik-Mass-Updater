@@ -38,13 +38,23 @@ def run_update_task(task_id: str, config: dict, db_url: str):
     log_filename = TaskLogService.get_log_filename(task_id)
     log_filepath = TaskLogService.get_log_filepath(task_id, log_filename)
 
-    def write_log(message: str):
-        """Write to both file and logger"""
+    def write_log(message: str, update_task_message: bool = False):
+        """Write to both file and logger, optionally update task message for WebSocket"""
         timestamp = datetime.utcnow().strftime("%Y-%m-%d %H:%M:%S")
         log_line = f"{timestamp} - {message}\n"
         with open(log_filepath, 'a', encoding='utf-8') as f:
             f.write(log_line)
         task_logger.info(message)
+
+        # Update task's current_message for WebSocket if requested
+        if update_task_message:
+            try:
+                task = db.query(Task).filter(Task.id == task_id).first()
+                if task:
+                    task.current_message = message[:500]  # Limit to 500 chars
+                    db.commit()
+            except Exception:
+                pass
 
     try:
         task = db.query(Task).filter(Task.id == task_id).first()
@@ -98,7 +108,7 @@ def run_update_task(task_id: str, config: dict, db_url: str):
             db.commit()
 
             write_log("")
-            write_log(f"Host: {router.ip}")
+            write_log(f"Host: {router.ip}", update_task_message=True)
 
             host = HostInfo(
                 ip=router.ip,
@@ -111,7 +121,7 @@ def run_update_task(task_id: str, config: dict, db_url: str):
             backup_result = None
             if cloud_backup and cloud_password:
                 try:
-                    write_log(f"  Performing cloud backup...")
+                    write_log(f"  Performing cloud backup...", update_task_message=True)
                     api = RouterService.connect(
                         host,
                         settings.DEFAULT_USERNAME or "",
@@ -140,12 +150,13 @@ def run_update_task(task_id: str, config: dict, db_url: str):
                 auto_change_tree=auto_change_tree,
                 upgrade_firmware=upgrade_firmware,
                 dry_run=dry_run,
-                timeout=timeout
+                timeout=timeout,
+                cached_latest_version=router.latest_version
             )
 
             # Log all messages from update
             for msg in result.messages:
-                write_log(f"  {msg}")
+                write_log(f"  {msg}", update_task_message=True)
 
             # Update router record
             if result.success:
@@ -157,6 +168,18 @@ def run_update_task(task_id: str, config: dict, db_url: str):
                 if result.new_version:
                     router.installed_version = result.new_version
                     router.has_updates = False
+                # Update additional router info collected during update
+                if result.ros_version:
+                    router.ros_version = result.ros_version
+                if result.update_channel:
+                    router.update_channel = result.update_channel
+                if result.firmware:
+                    router.firmware = result.firmware
+                if result.upgrade_firmware:
+                    router.upgrade_firmware = result.upgrade_firmware
+                    router.has_firmware_update = (result.firmware != result.upgrade_firmware)
+                if result.model:
+                    router.model = result.model
                 write_log(f"  Status: SUCCESS")
             else:
                 failed += 1

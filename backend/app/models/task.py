@@ -21,6 +21,7 @@ class Task(Base):
     progress = Column(Integer, default=0)
     total = Column(Integer, default=0)
     current_item = Column(String(255), nullable=True)  # Current router being processed
+    current_message = Column(String(500), nullable=True)  # Current operation message
 
     # Results
     results = Column(JSON, nullable=True)  # Aggregated results

@@ -12,6 +12,7 @@ from ..schemas.router import (
     RouterImport, RouterListResponse
 )
 from ..services.router_service import RouterService
+from .scan import _is_newer_version
 
 router = APIRouter(prefix="/routers", tags=["routers"])
 
@@ -161,6 +162,157 @@ def import_routers(import_data: RouterImport, db: Session = Depends(get_db)):
         offline=total - online,
         needs_update=sum(1 for r in routers if r.has_updates)
     )
+
+
+@router.post("/{router_id}/change-channel")
+def change_update_channel(
+    router_id: int,
+    channel: str,
+    db: Session = Depends(get_db)
+):
+    """
+    Change the update channel for a router via SSH.
+    Valid channels: stable, long-term, testing, development
+    """
+    from ..services.ssh_service import SSHService
+    from ..core.enums import UpdateTree
+    from ..config import settings
+
+    # Validate channel
+    valid_channels = ["stable", "long-term", "testing", "development"]
+    if channel not in valid_channels:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail=f"Invalid channel. Must be one of: {', '.join(valid_channels)}"
+        )
+
+    router_obj = db.query(Router).filter(Router.id == router_id).first()
+    if not router_obj:
+        raise HTTPException(
+            status_code=status.HTTP_404_NOT_FOUND,
+            detail=f"Router with ID {router_id} not found"
+        )
+
+    # Get credentials
+    username = router_obj.username or settings.DEFAULT_USERNAME
+    password = router_obj.password or settings.DEFAULT_PASSWORD
+
+    if not username or not password:
+        raise HTTPException(
+            status_code=status.HTTP_400_BAD_REQUEST,
+            detail="No credentials available for this router"
+        )
+
+    # Change channel via SSH
+    try:
+        update_tree = UpdateTree(channel)
+        success, message = SSHService.change_update_tree(
+            ip=router_obj.ip,
+            username=username,
+            password=password,
+            new_tree=update_tree
+        )
+
+        if success:
+            # Update database with new channel
+            router_obj.update_channel = channel
+            router_obj.updated_at = datetime.utcnow()
+
+            # After changing channel, connect to router and check for updates
+            try:
+                import librouteros
+                import time
+
+                api = librouteros.connect(
+                    host=router_obj.ip,
+                    username=username,
+                    password=password,
+                    port=router_obj.port or 8728,
+                    timeout=30
+                )
+
+                # Trigger check-for-updates
+                try:
+                    api.path('/system/package/update')('check-for-updates')
+                except Exception:
+                    pass
+
+                # Wait for check to complete
+                time.sleep(3)
+
+                # Read the new update info
+                for attempt in range(10):
+                    try:
+                        update_info = list(api.path('/system/package/update').select(
+                            'channel', 'installed-version', 'latest-version', 'status'
+                        ))
+                        if update_info:
+                            info = update_info[0]
+                            status = info.get('status', '').lower()
+
+                            if 'checking' not in status:
+                                installed = info.get('installed-version')
+                                latest = info.get('latest-version')
+
+                                if installed:
+                                    router_obj.installed_version = installed
+                                if latest:
+                                    router_obj.latest_version = latest
+                                    # Check if update available
+                                    router_obj.has_updates = (
+                                        latest != installed if latest and installed else False
+                                    )
+                                break
+                    except Exception:
+                        pass
+                    time.sleep(2)
+
+                # Also get firmware info
+                try:
+                    rb_info = list(api.path('/system/routerboard').select(
+                        'current-firmware', 'upgrade-firmware'
+                    ))
+                    if rb_info:
+                        current_fw = rb_info[0].get('current-firmware')
+                        upgrade_fw = rb_info[0].get('upgrade-firmware')
+                        if current_fw:
+                            router_obj.firmware = current_fw
+                        if upgrade_fw:
+                            router_obj.upgrade_firmware = upgrade_fw
+                        # Only show update if upgrade > current
+                        if current_fw and upgrade_fw:
+                            router_obj.has_firmware_update = _is_newer_version(upgrade_fw, current_fw)
+                        else:
+                            router_obj.has_firmware_update = False
+                except Exception:
+                    pass
+
+                api.close()
+
+            except Exception as e:
+                # Non-critical - channel was changed, just couldn't refresh data
+                pass
+
+            db.commit()
+
+            return {
+                "success": True,
+                "message": message,
+                "router_id": router_id,
+                "new_channel": channel,
+                "latest_version": router_obj.latest_version,
+                "has_updates": router_obj.has_updates
+            }
+        else:
+            raise HTTPException(
+                status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+                detail=message
+            )
+    except Exception as e:
+        raise HTTPException(
+            status_code=status.HTTP_500_INTERNAL_SERVER_ERROR,
+            detail=f"Failed to change channel: {str(e)}"
+        )
 
 
 @router.post("/import-file")

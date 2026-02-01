@@ -85,7 +85,7 @@
             </tr>
           </thead>
           <tbody>
-            <tr v-for="router in filteredRouters" :key="router.id">
+            <tr v-for="router in filteredRouters" :key="`${router.id}-${router.update_channel}-${router.latest_version}`" :class="{ 'row-loading': changingChannel[router.id] }">
               <td>
                 <input
                   type="checkbox"
@@ -115,7 +115,12 @@
               </td>
               <td>{{ router.identity || '-' }}</td>
               <td>{{ router.model || '-' }}</td>
-              <td>{{ router.ros_version || '-' }}</td>
+              <td>
+                {{ router.ros_version || '-' }}
+                <small class="text-success d-block" v-if="router.has_updates && router.latest_version">
+                  → {{ router.latest_version }}
+                </small>
+              </td>
               <td>
                 {{ router.firmware || '-' }}
                 <small class="text-warning d-block" v-if="router.has_firmware_update">
@@ -123,9 +128,21 @@
                 </small>
               </td>
               <td>
-                <span class="badge" :class="getChannelBadgeClass(router.update_channel)">
-                  {{ router.update_channel || '-' }}
-                </span>
+                <select
+                  class="form-select form-select-sm channel-select"
+                  :class="getChannelSelectClass(router.update_channel)"
+                  :value="router.update_channel || ''"
+                  @change="changeChannel(router, $event.target.value)"
+                  :disabled="!router.is_online || changingChannel[router.id]"
+                  :title="router.is_online ? 'Click to change update channel' : 'Router offline'"
+                >
+                  <option value="" disabled>-</option>
+                  <option value="stable">stable</option>
+                  <option value="long-term">long-term</option>
+                  <option value="testing">testing</option>
+                  <option value="development">development</option>
+                </select>
+                <i v-if="changingChannel[router.id]" class="bi bi-hourglass-split spin ms-1 text-muted"></i>
               </td>
               <td>
                 <small>{{ formatDate(router.last_seen) }}</small>
@@ -252,7 +269,7 @@
 <script setup>
 import { ref, computed } from 'vue'
 import { useMainStore } from '../stores/main'
-import { scanApi, taskApi } from '../services/api'
+import { scanApi, taskApi, routerApi } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 import UpgradeModal from './UpgradeModal.vue'
 
@@ -422,6 +439,9 @@ const formatDate = (dateStr) => {
 const upgradingFirmware = ref({})
 const upgradingRouterOS = ref({})
 
+// Channel change state
+const changingChannel = ref({})
+
 // Upgrade modal state
 const showUpgradeModal = ref(false)
 const upgradeModalRouter = ref(null)
@@ -546,4 +566,118 @@ const onUpgradeComplete = async (data) => {
     store.addNotification('success', `Upgrade completed for ${data.router?.identity || data.router?.ip || 'router'}`)
   }
 }
+
+// Channel change functions
+const getChannelSelectClass = (channel) => {
+  const classes = {
+    'stable': 'channel-stable',
+    'long-term': 'channel-longterm',
+    'testing': 'channel-testing',
+    'development': 'channel-development'
+  }
+  return classes[channel] || ''
+}
+
+const changeChannel = async (router, newChannel) => {
+  if (!router || !router.id || !newChannel) return
+  if (newChannel === router.update_channel) return
+
+  const routerId = router.id
+  changingChannel.value[routerId] = true
+
+  try {
+    const result = await routerApi.changeChannel(routerId, newChannel)
+
+    // Update the router in store using splice to ensure Vue reactivity
+    const idx = store.routers.findIndex(r => r.id === routerId)
+    if (idx !== -1) {
+      const updatedRouter = {
+        ...store.routers[idx],
+        update_channel: newChannel,
+        latest_version: result.latest_version,
+        has_updates: result.has_updates
+      }
+      store.routers.splice(idx, 1, updatedRouter)
+    }
+
+    // Show result with version info
+    const msg = result.has_updates
+      ? `Channel "${newChannel}" - update available: ${result.latest_version}`
+      : `Channel "${newChannel}" - up to date (${result.latest_version})`
+    store.addNotification('success', `${router.identity || router.ip}: ${msg}`)
+  } catch (error) {
+    store.addNotification('error', `Failed to change channel: ${error.message}`)
+    // Refresh to reset the select to original value
+    await store.fetchRouters()
+  } finally {
+    changingChannel.value[routerId] = false
+  }
+}
 </script>
+
+<style scoped>
+.channel-select {
+  width: auto;
+  min-width: 110px;
+  font-size: 0.75rem;
+  padding: 0.2rem 0.4rem;
+  cursor: pointer;
+}
+
+.channel-select:disabled {
+  cursor: not-allowed;
+  opacity: 0.6;
+}
+
+.channel-stable {
+  background-color: rgba(25, 135, 84, 0.15);
+  border-color: #198754;
+  color: #198754;
+}
+
+.channel-longterm {
+  background-color: rgba(13, 110, 253, 0.15);
+  border-color: #0d6efd;
+  color: #0d6efd;
+}
+
+.channel-testing {
+  background-color: rgba(255, 193, 7, 0.15);
+  border-color: #ffc107;
+  color: #856404;
+}
+
+.channel-development {
+  background-color: rgba(220, 53, 69, 0.15);
+  border-color: #dc3545;
+  color: #dc3545;
+}
+
+.spin {
+  animation: spin 1s linear infinite;
+}
+
+@keyframes spin {
+  from { transform: rotate(0deg); }
+  to { transform: rotate(360deg); }
+}
+
+.row-loading {
+  opacity: 0.5;
+  pointer-events: none;
+  position: relative;
+}
+
+.row-loading::after {
+  content: "Updating...";
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  background: rgba(0, 0, 0, 0.7);
+  color: white;
+  padding: 4px 12px;
+  border-radius: 4px;
+  font-size: 0.8rem;
+}
+</style>

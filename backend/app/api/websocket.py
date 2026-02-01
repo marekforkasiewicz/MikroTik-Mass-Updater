@@ -73,6 +73,7 @@ async def task_progress_websocket(websocket: WebSocket, task_id: str):
         db = SessionLocal()
         last_progress = -1
         last_status = None
+        last_message = None
 
         while True:
             # Check task status
@@ -86,9 +87,11 @@ async def task_progress_websocket(websocket: WebSocket, task_id: str):
                 break
 
             # Send update if something changed
-            if task.progress != last_progress or task.status != last_status:
+            current_message = getattr(task, 'current_message', None)
+            if task.progress != last_progress or task.status != last_status or current_message != last_message:
                 last_progress = task.progress
                 last_status = task.status
+                last_message = current_message
 
                 await websocket.send_json({
                     "task_id": task_id,
@@ -96,6 +99,7 @@ async def task_progress_websocket(websocket: WebSocket, task_id: str):
                     "progress": task.progress,
                     "total": task.total,
                     "current_item": task.current_item,
+                    "current_message": current_message,
                     "progress_percent": task.progress_percent
                 })
 

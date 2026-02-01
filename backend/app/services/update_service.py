@@ -35,6 +35,12 @@ class UpdateResult:
     rebooted: bool = False
     error: Optional[str] = None
     messages: List[str] = None
+    # Additional router info collected during update
+    update_channel: Optional[str] = None
+    ros_version: Optional[str] = None
+    firmware: Optional[str] = None
+    upgrade_firmware: Optional[str] = None
+    model: Optional[str] = None
 
     def __post_init__(self):
         if self.messages is None:
@@ -43,6 +49,59 @@ class UpdateResult:
 
 class UpdateService:
     """Service for RouterOS update operations"""
+
+    @staticmethod
+    def _parse_version(version_str: str) -> tuple:
+        """
+        Parse MikroTik version string into comparable tuple.
+        Examples: 7.21.2, 7.22beta6, 7.21rc6
+        Returns tuple: (major, minor, patch, prerelease_type, prerelease_num)
+        prerelease_type: 0=stable, -1=rc, -2=beta, -3=alpha
+        """
+        import re
+        if not version_str:
+            return (0, 0, 0, 0, 0)
+
+        # Remove any extra text after version (like "(testing) 2026-01-09...")
+        version_str = version_str.split()[0] if ' ' in version_str else version_str
+
+        # Match version pattern: 7.21.2 or 7.22beta6 or 7.21rc6
+        match = re.match(r'^(\d+)\.(\d+)(?:\.(\d+))?(?:(alpha|beta|rc)(\d+))?', version_str, re.IGNORECASE)
+        if not match:
+            return (0, 0, 0, 0, 0)
+
+        major = int(match.group(1))
+        minor = int(match.group(2))
+        patch = int(match.group(3) or 0)
+
+        prerelease_type = 0  # stable
+        prerelease_num = 0
+
+        if match.group(4):
+            pr_type = match.group(4).lower()
+            prerelease_num = int(match.group(5))
+            if pr_type == 'alpha':
+                prerelease_type = -3
+            elif pr_type == 'beta':
+                prerelease_type = -2
+            elif pr_type == 'rc':
+                prerelease_type = -1
+
+        return (major, minor, patch, prerelease_type, prerelease_num)
+
+    @staticmethod
+    def _is_newer_version(latest: str, installed: str) -> bool:
+        """
+        Check if latest version is newer than installed version.
+        Returns True if update is available.
+        """
+        if not latest or not installed:
+            return False
+
+        latest_parsed = UpdateService._parse_version(latest)
+        installed_parsed = UpdateService._parse_version(installed)
+
+        return latest_parsed > installed_parsed
 
     @staticmethod
     def check_update_tree_status(api: Any, desired_tree: UpdateTree) -> Tuple[str, bool]:
@@ -200,7 +259,9 @@ class UpdateService:
             Tuple of (success, message)
         """
         try:
-            api.path('/system/routerboard')('upgrade')
+            # Use tuple() to force execution, matching original script behavior
+            routerboard_path = api.path('/system', 'routerboard')
+            tuple(routerboard_path('upgrade'))
             return True, "Firmware upgrade command sent"
         except Exception as e:
             return False, f"Firmware upgrade failed: {type(e).__name__}: {e}"
@@ -239,7 +300,13 @@ class UpdateService:
 
         except (socket.error, TimeoutError, ConnectionResetError):
             return True, "Router is rebooting as expected"
+        except librouteros.exceptions.ConnectionClosed:
+            return True, "Router is rebooting (connection closed)"
         except Exception as e:
+            # Check if it's a connection-related error (router rebooting)
+            error_str = str(e).lower()
+            if 'closed' in error_str or 'reset' in error_str or 'connection' in error_str:
+                return True, "Router is rebooting"
             return False, f"Reboot failed: {type(e).__name__}: {e}"
 
     @staticmethod
@@ -251,7 +318,8 @@ class UpdateService:
         auto_change_tree: bool = False,
         upgrade_firmware: bool = False,
         dry_run: bool = False,
-        timeout: int = 30
+        timeout: int = 30,
+        cached_latest_version: Optional[str] = None
     ) -> UpdateResult:
         """
         Process complete update for a single router.
@@ -265,6 +333,7 @@ class UpdateService:
             upgrade_firmware: Whether to upgrade firmware
             dry_run: If True, don't perform actual updates
             timeout: Connection timeout
+            cached_latest_version: Fallback latest version from database if router can't fetch it
 
         Returns:
             UpdateResult with operation results
@@ -302,32 +371,9 @@ class UpdateService:
                     result.error = "Failed to change update tree"
                     return result
 
-            # Check for updates
-            updates_available, installed, latest = UpdateService.check_for_updates(api)
-            result.previous_version = installed
-            result.new_version = latest
-
-            if updates_available:
-                result.messages.append(f"Updates available: {installed} -> {latest}")
-
-                if not dry_run:
-                    # Wait before installing (as per original script)
-                    time.sleep(2)
-                    success, msg = UpdateService.install_updates(api)
-                    result.messages.append(msg)
-                    if success:
-                        result.rebooted = True
-                        result.success = True
-                        return result
-                    else:
-                        result.error = msg
-                        return result
-                else:
-                    result.messages.append("Dry-run: Skipping update installation")
-            else:
-                result.messages.append("No updates available")
-
-            # Check firmware upgrade
+            # Check firmware upgrade FIRST (before RouterOS updates)
+            # This matches the original script behavior
+            firmware_upgraded = False
             if upgrade_firmware:
                 fw_available, current_fw, upgrade_fw = UpdateService.check_firmware_upgrade(api)
 
@@ -340,14 +386,78 @@ class UpdateService:
 
                         if success:
                             result.firmware_upgraded = True
-                            # Reboot to apply firmware
-                            success, msg = UpdateService.reboot_router(api)
-                            result.messages.append(msg)
-                            result.rebooted = success
+                            firmware_upgraded = True
+                            # Wait for firmware upgrade command to be fully processed
+                            # MikroTik needs time to prepare firmware for flashing
+                            result.messages.append("Waiting for firmware to be prepared (10s)...")
+                            time.sleep(10)
                     else:
                         result.messages.append("Dry-run: Skipping firmware upgrade")
                 else:
-                    result.messages.append("Firmware is up to date")
+                    result.messages.append(f"Firmware is up to date: {current_fw}")
+
+            # Check for RouterOS updates
+            updates_available, installed, latest = UpdateService.check_for_updates(api)
+            result.previous_version = installed
+
+            # If router couldn't fetch latest version, use cached version from database
+            if not latest and cached_latest_version:
+                latest = cached_latest_version
+                result.messages.append(f"Using cached latest version: {latest}")
+                # Re-evaluate if update is available using version comparison
+                if installed and latest:
+                    updates_available = UpdateService._is_newer_version(latest, installed)
+
+            result.new_version = latest
+
+            reboot_triggered = False
+            if updates_available:
+                result.messages.append(f"RouterOS update available: {installed} -> {latest}")
+
+                if not dry_run:
+                    # Wait before installing (as per original script)
+                    time.sleep(2)
+                    success, msg = UpdateService.install_updates(api)
+                    result.messages.append(msg)
+                    if success:
+                        result.rebooted = True
+                        reboot_triggered = True
+                    else:
+                        result.error = msg
+                else:
+                    result.messages.append("Dry-run: Skipping update installation")
+            else:
+                result.messages.append(f"RouterOS is up to date: {installed}")
+
+            # If firmware was upgraded but no RouterOS update triggered reboot, reboot now
+            if firmware_upgraded and not reboot_triggered:
+                success, msg = UpdateService.reboot_router(api)
+                result.messages.append(msg)
+                result.rebooted = success
+
+            # Collect full router info for database update (if not rebooting)
+            if not result.rebooted:
+                try:
+                    # Get RouterOS version
+                    resource = list(api.path('/system/resource').select('version', 'board-name'))
+                    if resource:
+                        result.ros_version = resource[0].get('version')
+                        result.model = resource[0].get('board-name')
+
+                    # Get firmware info
+                    rb_info = list(api.path('/system/routerboard').select(
+                        'current-firmware', 'upgrade-firmware'
+                    ))
+                    if rb_info:
+                        result.firmware = rb_info[0].get('current-firmware')
+                        result.upgrade_firmware = rb_info[0].get('upgrade-firmware')
+
+                    # Get update channel
+                    update_info = list(api.path('/system/package/update').select('channel'))
+                    if update_info:
+                        result.update_channel = update_info[0].get('channel')
+                except Exception:
+                    pass  # Non-critical, continue
 
             result.success = True
 

@@ -30,6 +30,11 @@ api.interceptors.response.use(
   async error => {
     const originalRequest = error.config
 
+    // Handle case where error.config is undefined (network errors, etc.)
+    if (!originalRequest) {
+      return Promise.reject(error)
+    }
+
     // Don't try to refresh if:
     // - This IS the refresh endpoint
     // - Already tried to refresh this request
@@ -120,7 +125,8 @@ export const routerApi = {
   update: (id, data) => api.put(`/routers/${id}`, data),
   delete: (id) => api.delete(`/routers/${id}`),
   import: (content, replace = false) => api.post('/routers/import', { content, replace }),
-  importFile: () => api.post('/routers/import-file')
+  importFile: () => api.post('/routers/import-file'),
+  changeChannel: (id, channel) => api.post(`/routers/${id}/change-channel`, null, { params: { channel } })
 }
 
 // =============================================================================
@@ -146,7 +152,8 @@ export const groupsApi = {
 export const scanApi = {
   quickScan: (routerIds = null) => api.post('/scan/quick', routerIds ? { router_ids: routerIds } : null),
   fullScan: (routerIds = null) => api.post('/scan/full', routerIds ? { router_ids: routerIds } : null),
-  quickScanSingle: (routerId) => api.get(`/scan/quick/single/${routerId}`)
+  quickScanSingle: (routerId) => api.get(`/scan/quick/single/${routerId}`),
+  checkFirmware: (routerId) => api.get(`/scan/firmware/${routerId}`)
 }
 
 // =============================================================================

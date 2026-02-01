@@ -30,3 +30,13 @@ def get_db():
 def init_db():
     """Initialize database tables"""
     Base.metadata.create_all(bind=engine)
+
+    # Add missing columns for existing databases (SQLite migration)
+    from sqlalchemy import text
+    with engine.connect() as conn:
+        # Check and add current_message column to tasks table
+        try:
+            conn.execute(text("ALTER TABLE tasks ADD COLUMN current_message VARCHAR(500)"))
+            conn.commit()
+        except Exception:
+            pass  # Column already exists

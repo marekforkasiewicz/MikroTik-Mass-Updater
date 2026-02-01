@@ -376,8 +376,49 @@ def quick_scan_single(router_id: int, db: Session = Depends(get_db)):
         router.last_seen = datetime.utcnow()
     if result.ros_version:
         router.ros_version = result.ros_version
+        # Also update installed_version to match ros_version (extract version without build info)
+        # e.g., "7.22beta6 (development)" -> "7.22beta6"
+        version_part = result.ros_version.split()[0] if result.ros_version else None
+        if version_part:
+            router.installed_version = version_part
+            # If installed matches latest, no more updates needed
+            if router.latest_version and version_part == router.latest_version:
+                router.has_updates = False
     if result.identity:
         router.identity = result.identity
+
+    # If router is online with API, also fetch firmware info
+    if result.port_api_open and result.has_credentials:
+        try:
+            import librouteros
+            username = host.username or settings.DEFAULT_USERNAME
+            password = host.password or settings.DEFAULT_PASSWORD
+            api = librouteros.connect(
+                host=host.ip,
+                username=username,
+                password=password,
+                port=host.port or 8728,
+                timeout=10
+            )
+            try:
+                rb_info = list(api.path('/system/routerboard').select(
+                    'current-firmware', 'upgrade-firmware'
+                ))
+                if rb_info:
+                    router.firmware = rb_info[0].get('current-firmware')
+                    router.upgrade_firmware = rb_info[0].get('upgrade-firmware')
+                    # Only show firmware update if upgrade > current (not downgrade)
+                    if router.firmware and router.upgrade_firmware:
+                        router.has_firmware_update = _is_newer_version(
+                            router.upgrade_firmware, router.firmware
+                        )
+                    else:
+                        router.has_firmware_update = False
+            finally:
+                api.close()
+        except Exception:
+            pass  # Non-critical, continue without firmware update
+
     db.commit()
 
     return QuickScanResult(
@@ -391,3 +432,85 @@ def quick_scan_single(router_id: int, db: Session = Depends(get_db)):
         status=result.status,
         has_credentials=result.has_credentials
     )
+
+
+@router.get("/firmware/{router_id}")
+def check_firmware_status(router_id: int, db: Session = Depends(get_db)):
+    """Check firmware status of a single router"""
+    router_obj = db.query(Router).filter(Router.id == router_id).first()
+    if not router_obj:
+        raise HTTPException(status_code=404, detail="Router not found")
+
+    host = HostInfo(
+        ip=router_obj.ip,
+        port=router_obj.port,
+        username=router_obj.username,
+        password=router_obj.password
+    )
+
+    try:
+        api = RouterService.connect(
+            host,
+            settings.DEFAULT_USERNAME,
+            settings.DEFAULT_PASSWORD,
+            timeout=15
+        )
+
+        # Get firmware info
+        firmware_info = {}
+        try:
+            rb_response = list(api.path('/system/routerboard').select(
+                'current-firmware', 'upgrade-firmware', 'model', 'serial-number'
+            ))
+            if rb_response:
+                info = rb_response[0]
+                firmware_info = {
+                    'current_firmware': info.get('current-firmware'),
+                    'upgrade_firmware': info.get('upgrade-firmware'),
+                    'model': info.get('model'),
+                    'serial_number': info.get('serial-number'),
+                    'needs_upgrade': _is_newer_version(
+                        info.get('upgrade-firmware'), info.get('current-firmware')
+                    ) if info.get('upgrade-firmware') and info.get('current-firmware') else False
+                }
+        except Exception as e:
+            firmware_info = {'error': str(e)}
+
+        # Get RouterOS version
+        ros_version = None
+        try:
+            resource = list(api.path('/system/resource').select('version'))
+            if resource:
+                ros_version = resource[0].get('version')
+        except Exception:
+            pass
+
+        api.close()
+
+        # Update router record
+        if firmware_info.get('current_firmware'):
+            router_obj.firmware = firmware_info['current_firmware']
+        if firmware_info.get('upgrade_firmware'):
+            router_obj.upgrade_firmware = firmware_info['upgrade_firmware']
+        router_obj.has_firmware_update = firmware_info.get('needs_upgrade', False)
+        router_obj.is_online = True
+        router_obj.last_seen = datetime.utcnow()
+        if ros_version:
+            router_obj.ros_version = ros_version
+        db.commit()
+
+        return {
+            'ip': router_obj.ip,
+            'identity': router_obj.identity,
+            'ros_version': ros_version,
+            **firmware_info,
+            'success': True
+        }
+
+    except Exception as e:
+        return {
+            'ip': router_obj.ip,
+            'identity': router_obj.identity,
+            'error': str(e),
+            'success': False
+        }

@@ -240,7 +240,7 @@ async def bulk_execute_script(
     # Create task
     task = Task(
         id=str(uuid.uuid4()),
-        task_type="script",
+        type="script",
         status="pending",
         config={
             "script_id": script_id,
