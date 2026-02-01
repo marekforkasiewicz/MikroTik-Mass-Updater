@@ -113,25 +113,23 @@ class TopologyService:
         return "<br>".join(lines)
 
     def _discover_edges(self, routers: List[Router]) -> List[Dict[str, Any]]:
-        """Discover network edges from router neighbors"""
+        """Discover network edges from router neighbors or infer from network"""
         edges = []
         seen_edges = set()
 
         # Build IP to router ID map
         ip_to_id = {r.ip: r.id for r in routers}
 
+        # First try to use stored neighbor data
         for router in routers:
             if not router.is_online:
                 continue
 
-            # Check if router has neighbors info stored
             if router.neighbors:
                 for neighbor in router.neighbors:
                     neighbor_ip = neighbor.get("address")
                     if neighbor_ip and neighbor_ip in ip_to_id:
                         neighbor_id = ip_to_id[neighbor_ip]
-
-                        # Create unique edge key (sorted to avoid duplicates)
                         edge_key = tuple(sorted([router.id, neighbor_id]))
                         if edge_key not in seen_edges:
                             seen_edges.add(edge_key)
@@ -142,6 +140,75 @@ class TopologyService:
                                 "width": 2,
                                 "color": {"color": "#6c757d", "opacity": 0.8}
                             })
+
+        # If no edges found, create inferred topology
+        if not edges:
+            edges = self._infer_topology(routers)
+
+        return edges
+
+    def _infer_topology(self, routers: List[Router]) -> List[Dict[str, Any]]:
+        """Infer network topology when no neighbor data available"""
+        edges = []
+        seen_edges = set()
+
+        if len(routers) < 2:
+            return edges
+
+        # Find the main router (likely gateway) - usually .1 or .2 in subnet
+        # Or the one with "main", "core", "gateway" in identity
+        main_router = None
+        for router in routers:
+            if router.identity:
+                identity_lower = router.identity.lower()
+                if any(kw in identity_lower for kw in ['main', 'core', 'gateway', 'glowny', 'router']):
+                    main_router = router
+                    break
+
+        # Fallback: router with lowest IP in the subnet
+        if not main_router:
+            online_routers = [r for r in routers if r.is_online]
+            if online_routers:
+                main_router = min(online_routers, key=lambda r: tuple(map(int, r.ip.split('.'))))
+
+        if not main_router:
+            main_router = routers[0]
+
+        # Create star topology with main router as hub
+        for router in routers:
+            if router.id == main_router.id:
+                continue
+
+            edge_key = tuple(sorted([main_router.id, router.id]))
+            if edge_key not in seen_edges:
+                seen_edges.add(edge_key)
+
+                # Determine edge style based on device type
+                width = 2
+                color = "#6c757d"
+                dashes = False
+
+                if router.model:
+                    model_lower = router.model.lower()
+                    if "sxt" in model_lower or "lhg" in model_lower:
+                        # Wireless link
+                        dashes = True
+                        color = "#17a2b8"
+                    elif "cap" in model_lower or "wap" in model_lower:
+                        # AP connection
+                        color = "#28a745"
+
+                edge = {
+                    "from": main_router.id,
+                    "to": router.id,
+                    "title": "Inferred connection",
+                    "width": width,
+                    "color": {"color": color, "opacity": 0.6},
+                }
+                if dashes:
+                    edge["dashes"] = True
+
+                edges.append(edge)
 
         return edges
 
