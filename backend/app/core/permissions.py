@@ -72,6 +72,11 @@ class Permission(str, Enum):
     VIEW_API_KEYS = "view_api_keys"
     MANAGE_API_KEYS = "manage_api_keys"
 
+    # Templates (ZTP)
+    VIEW_TEMPLATES = "view_templates"
+    MANAGE_TEMPLATES = "manage_templates"
+    DEPLOY_TEMPLATES = "deploy_templates"
+
 
 # Role-permission mapping
 ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
@@ -118,6 +123,11 @@ ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
         # API Keys (own keys)
         Permission.VIEW_API_KEYS,
         Permission.MANAGE_API_KEYS,
+
+        # Templates (ZTP)
+        Permission.VIEW_TEMPLATES,
+        Permission.MANAGE_TEMPLATES,
+        Permission.DEPLOY_TEMPLATES,
     ],
 
     Role.VIEWER: [
@@ -130,6 +140,7 @@ ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
         Permission.VIEW_MONITORING,
         Permission.VIEW_REPORTS,
         Permission.VIEW_WEBHOOKS,
+        Permission.VIEW_TEMPLATES,
     ],
 }
 

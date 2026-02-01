@@ -9,6 +9,8 @@ from .backup import RouterBackup, RollbackLog
 from .script import CustomScript, ScriptExecution
 from .monitoring import MonitoringConfig, HealthCheck, AlertHistory
 from .webhook import Webhook, WebhookDelivery
+from .template import ConfigTemplate, DeviceProfile, TemplateDeployment, profile_templates
+from .compliance import ComplianceBaseline, ComplianceCheck, ComplianceRule
 
 __all__ = [
     "Router",
@@ -32,4 +34,11 @@ __all__ = [
     "AlertHistory",
     "Webhook",
     "WebhookDelivery",
+    "ConfigTemplate",
+    "DeviceProfile",
+    "TemplateDeployment",
+    "profile_templates",
+    "ComplianceBaseline",
+    "ComplianceCheck",
+    "ComplianceRule",
 ]

@@ -52,6 +52,7 @@ class TaskType(str, Enum):
     SCRIPT = "script"
     RESTORE = "restore"
     HEALTH_CHECK = "health_check"
+    TEMPLATE_DEPLOY = "template_deploy"
 
 
 class UserRole(str, Enum):

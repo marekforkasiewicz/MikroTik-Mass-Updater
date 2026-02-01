@@ -51,6 +51,18 @@
             Automation
           </router-link>
         </li>
+        <li class="nav-item" v-if="authStore.isOperator">
+          <router-link to="/templates" class="nav-link" :class="{ active: $route.path === '/templates' }">
+            <i class="bi bi-file-earmark-code"></i>
+            Templates
+          </router-link>
+        </li>
+        <li class="nav-item" v-if="authStore.isOperator">
+          <router-link to="/compliance" class="nav-link" :class="{ active: $route.path === '/compliance' }">
+            <i class="bi bi-shield-check"></i>
+            Compliance
+          </router-link>
+        </li>
         <li class="nav-item">
           <router-link to="/monitoring" class="nav-link" :class="{ active: $route.path === '/monitoring' }">
             <i class="bi bi-heart-pulse"></i>

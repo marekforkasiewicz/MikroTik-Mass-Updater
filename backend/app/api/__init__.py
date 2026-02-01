@@ -14,6 +14,8 @@ from .reports import router as reports_router
 from .dashboard import router as dashboard_router
 from .webhooks import router as webhooks_router
 from .discovery import router as discovery_router
+from .templates import router as templates_router
+from .compliance import router as compliance_router
 
 __all__ = [
     "routers_router",
@@ -32,4 +34,6 @@ __all__ = [
     "dashboard_router",
     "webhooks_router",
     "discovery_router",
+    "templates_router",
+    "compliance_router",
 ]

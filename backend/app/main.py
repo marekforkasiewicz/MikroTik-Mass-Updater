@@ -16,7 +16,7 @@ from .api import (
     auth_router, users_router, groups_router, schedules_router,
     notifications_router, backups_router, scripts_router,
     monitoring_router, reports_router, dashboard_router, webhooks_router,
-    discovery_router
+    discovery_router, templates_router, compliance_router
 )
 from .api.websocket import router as websocket_router
 from .services.auth_service import AuthService
@@ -153,6 +153,12 @@ if settings.FEATURE_REPORTS:
 if settings.FEATURE_WEBHOOKS:
     app.include_router(webhooks_router, prefix=settings.API_PREFIX)
 
+# Templates (ZTP) - always enabled
+app.include_router(templates_router, prefix=settings.API_PREFIX)
+
+# Compliance - always enabled
+app.include_router(compliance_router, prefix=settings.API_PREFIX)
+
 
 # API info endpoint
 @app.get("/api")
@@ -183,6 +189,8 @@ async def api_info():
         endpoints["webhooks"] = "/api/webhooks"
 
     endpoints["backups"] = "/api/backups"
+    endpoints["templates"] = "/api/templates"
+    endpoints["compliance"] = "/api/compliance"
 
     return {
         "name": settings.APP_NAME,

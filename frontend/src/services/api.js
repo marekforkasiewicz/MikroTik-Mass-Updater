@@ -319,6 +319,72 @@ export const discoveryApi = {
 }
 
 // =============================================================================
+// Templates API (ZTP - Zero-Touch Provisioning)
+// =============================================================================
+export const templatesApi = {
+  // Templates CRUD
+  list: (params = {}) => api.get('/templates', { params }),
+  get: (id) => api.get(`/templates/${id}`),
+  create: (data) => api.post('/templates', data),
+  update: (id, data) => api.put(`/templates/${id}`, data),
+  delete: (id) => api.delete(`/templates/${id}`),
+  getCategories: () => api.get('/templates/categories'),
+
+  // Template validation and preview
+  validate: (content) => api.post('/templates/validate', { content }),
+  validateExisting: (id) => api.post(`/templates/${id}/validate`),
+  preview: (id, data = {}) => api.post(`/templates/${id}/preview`, data),
+
+  // Template deployment (returns task_id for non-dry-run)
+  deploy: (id, data) => api.post(`/templates/${id}/deploy`, data),
+
+  // Device profiles
+  listProfiles: (params = {}) => api.get('/templates/profiles', { params }),
+  getProfile: (id) => api.get(`/templates/profiles/${id}`),
+  createProfile: (data) => api.post('/templates/profiles', data),
+  updateProfile: (id, data) => api.put(`/templates/profiles/${id}`, data),
+  deleteProfile: (id) => api.delete(`/templates/profiles/${id}`),
+  getProfileRouters: (id) => api.get(`/templates/profiles/${id}/routers`),
+
+  // Deployment history
+  listDeployments: (params = {}) => api.get('/templates/deployments', { params }),
+  getDeployment: (id) => api.get(`/templates/deployments/${id}`)
+}
+
+// =============================================================================
+// Compliance API
+// =============================================================================
+export const complianceApi = {
+  // Config export
+  exportConfig: (routerId, hideSensitive = true) =>
+    api.get(`/compliance/routers/${routerId}/export`, { params: { hide_sensitive: hideSensitive } }),
+
+  // Config diff
+  diffConfigs: (data) => api.post('/compliance/diff', data),
+
+  // Baselines CRUD
+  listBaselines: (params = {}) => api.get('/compliance/baselines', { params }),
+  getBaseline: (id) => api.get(`/compliance/baselines/${id}`),
+  createBaseline: (data) => api.post('/compliance/baselines', data),
+  updateBaseline: (id, data) => api.put(`/compliance/baselines/${id}`, data),
+  deleteBaseline: (id) => api.delete(`/compliance/baselines/${id}`),
+
+  // Compliance checks
+  runCheck: (data) => api.post('/compliance/check', data),
+  listChecks: (params = {}) => api.get('/compliance/checks', { params }),
+  getCheck: (id) => api.get(`/compliance/checks/${id}`),
+  getSummary: (baselineId = null) =>
+    api.get('/compliance/summary', { params: baselineId ? { baseline_id: baselineId } : {} })
+}
+
+// =============================================================================
+// Template Deployment WebSocket
+// =============================================================================
+export const createTemplateDeployWebSocket = (taskId, onMessage, onError) => {
+  return createTaskWebSocket(taskId, onMessage, onError)
+}
+
+// =============================================================================
 // WebSocket helpers
 // =============================================================================
 export const createTaskWebSocket = (taskId, onMessage, onError) => {

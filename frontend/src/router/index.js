@@ -15,6 +15,8 @@ const BatchOperations = () => import('../components/BatchOperations.vue')
 const Automation = () => import('../components/Automation.vue')
 const Settings = () => import('../components/Settings.vue')
 const ReportsAndLogs = () => import('../components/ReportsAndLogs.vue')
+const TemplateList = () => import('../components/TemplateList.vue')
+const ComplianceCheck = () => import('../components/ComplianceCheck.vue')
 
 const routes = [
   {
@@ -65,6 +67,18 @@ const routes = [
     name: 'settings',
     component: Settings,
     meta: { requiresAdmin: true }
+  },
+  {
+    path: '/templates',
+    name: 'templates',
+    component: TemplateList,
+    meta: { requiresOperator: true }
+  },
+  {
+    path: '/compliance',
+    name: 'compliance',
+    component: ComplianceCheck,
+    meta: { requiresOperator: true }
   },
 
   // Legacy route redirects (for bookmarks/saved links)
