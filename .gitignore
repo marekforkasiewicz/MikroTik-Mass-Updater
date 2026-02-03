@@ -38,3 +38,12 @@ env/
 # OS
 .DS_Store
 Thumbs.db
+
+# Screenshots and test reports
+screenshots/
+frontend/screenshots/
+playwright-report/
+
+# Test and debug scripts
+screenshot-service/
+test-*.py
