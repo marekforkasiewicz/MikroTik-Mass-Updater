@@ -1,0 +1,8 @@
+# Format: IP[:PORT][|USERNAME|PASSWORD]
+
+# Default port and credentials
+#192.168.1.1
+
+# Custom port
+
+#192.168.1.2:8729
