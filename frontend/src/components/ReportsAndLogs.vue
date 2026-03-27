@@ -444,17 +444,16 @@ async function fetchLogs() {
 }
 
 async function viewLog(file) {
-  selectedLogFile.value = file
-  showLogViewer.value = true
-  logViewMode.value = 'parsed'
-
   try {
     const [parsed, raw] = await Promise.all([
       api.get(`/tasks/logs/files/${file.filename}`),
       api.get(`/tasks/logs/files/${file.filename}/raw`)
     ])
+    selectedLogFile.value = file
     parsedLog.value = parsed
     rawLog.value = raw
+    showLogViewer.value = true
+    logViewMode.value = 'parsed'
   } catch (error) {
     store.addNotification('error', 'Failed to load log file')
   }

@@ -37,9 +37,14 @@ class SSHService:
         """
         try:
             import paramiko
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        except ImportError:
+            return SSHService._change_tree_sshpass(
+                ip, username, password, new_tree, ssh_port, timeout
+            )
 
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
             ssh.connect(
                 ip,
                 port=ssh_port,
@@ -56,20 +61,14 @@ class SSHService:
             error = stderr.read().decode().strip()
             output = stdout.read().decode().strip()
 
-            ssh.close()
-
             if error:
                 return (False, f"SSH error: {error}")
             else:
                 return (True, f"Update tree changed to '{new_tree.value}' via SSH")
-
-        except ImportError:
-            # Fallback to sshpass if paramiko is not available
-            return SSHService._change_tree_sshpass(
-                ip, username, password, new_tree, ssh_port, timeout
-            )
         except Exception as e:
             return (False, f"SSH connection failed: {type(e).__name__}: {e}")
+        finally:
+            ssh.close()
 
     @staticmethod
     def _change_tree_sshpass(
@@ -129,9 +128,12 @@ class SSHService:
         """
         try:
             import paramiko
-            ssh = paramiko.SSHClient()
-            ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        except ImportError:
+            return (False, "", "paramiko not installed")
 
+        ssh = paramiko.SSHClient()
+        ssh.set_missing_host_key_policy(paramiko.AutoAddPolicy())
+        try:
             ssh.connect(
                 ip,
                 port=ssh_port,
@@ -147,9 +149,8 @@ class SSHService:
             output = stdout.read().decode().strip()
             error = stderr.read().decode().strip()
 
-            ssh.close()
-
             return (not bool(error), output, error)
-
         except Exception as e:
             return (False, "", str(e))
+        finally:
+            ssh.close()

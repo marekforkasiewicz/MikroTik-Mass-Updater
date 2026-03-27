@@ -878,6 +878,10 @@ onUnmounted(() => {
     deployWebSocket.close()
     deployWebSocket = null
   }
+  if (pollInterval) {
+    clearInterval(pollInterval)
+    pollInterval = null
+  }
 })
 
 // Methods

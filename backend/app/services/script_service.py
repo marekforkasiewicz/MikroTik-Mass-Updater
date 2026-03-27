@@ -436,15 +436,17 @@ class ScriptService:
         from .ssh_service import SSHService
 
         ssh = SSHService()
-        result = ssh.execute_command(
-            host=router.ip,
+        success, output, error = ssh.execute_command(
+            ip=router.ip,
             username=router.username,
             password=router.password,
             command=script_content,
             timeout=timeout
         )
 
-        return result.get("output", ""), result.get("return_code")
+        if not success and error:
+            return f"{output}\nError: {error}" if output else error, 1
+        return output, 0
 
     def get_executions(
         self,

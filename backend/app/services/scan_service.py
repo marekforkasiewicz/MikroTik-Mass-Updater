@@ -98,11 +98,10 @@ class ScanService:
     def check_port(ip: str, port: int, timeout: int = PORT_CHECK_TIMEOUT) -> bool:
         """Check if a TCP port is open."""
         try:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-            sock.settimeout(timeout)
-            result = sock.connect_ex((ip, port))
-            sock.close()
-            return result == 0
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                sock.settimeout(timeout)
+                result = sock.connect_ex((ip, port))
+                return result == 0
         except Exception as e:
             logger.debug(f"Port check failed for {ip}:{port}: {e}")
             return False

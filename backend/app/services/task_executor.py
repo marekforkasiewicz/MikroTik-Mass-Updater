@@ -291,12 +291,14 @@ def _execute_health_check(db, routers, config, execution):
 
     # Run async function
     try:
-        loop = asyncio.get_event_loop()
+        asyncio.get_running_loop()
+        # Already in async context - run in a new thread
+        import concurrent.futures
+        with concurrent.futures.ThreadPoolExecutor() as pool:
+            pool.submit(asyncio.run, run_checks()).result()
     except RuntimeError:
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
-
-    loop.run_until_complete(run_checks())
+        # No running loop - safe to use asyncio.run
+        asyncio.run(run_checks())
 
     execution.routers_success = success
     execution.routers_failed = failed
