@@ -1,13 +1,13 @@
 """WebSocket endpoints for real-time updates"""
 
 import asyncio
-import json
-from typing import Dict, Set
-from fastapi import APIRouter, WebSocket, WebSocketDisconnect, Depends
-from sqlalchemy.orm import Session
+from typing import Dict, Optional, Set
+from fastapi import APIRouter, WebSocket, WebSocketDisconnect, status
 
-from ..database import get_db, SessionLocal
+from ..database import SessionLocal
 from ..models.task import Task
+from ..models.user import APIKey, User
+from ..core.security import decode_token, verify_api_key
 from ..core.enums import TaskStatus
 
 router = APIRouter(tags=["websocket"])
@@ -52,6 +52,52 @@ class ConnectionManager:
 manager = ConnectionManager()
 
 
+async def _authenticate_websocket(websocket: WebSocket) -> Optional[User]:
+    """Authenticate websocket clients via access-token cookie, bearer token, or API key."""
+    token = websocket.cookies.get("access_token")
+
+    if not token:
+        authorization = websocket.headers.get("authorization", "")
+        if authorization.startswith("Bearer "):
+            token = authorization[7:]
+
+    if not token:
+        token = websocket.query_params.get("token")
+
+    api_key = websocket.headers.get("x-api-key") or websocket.query_params.get("api_key")
+
+    db = SessionLocal()
+    try:
+        if token:
+            payload = decode_token(token)
+            if payload and payload.get("type") == "access":
+                user_id = payload.get("sub")
+                if user_id:
+                    user = db.query(User).filter(User.id == int(user_id)).first()
+                    if user and user.is_active:
+                        return user
+
+        if api_key:
+            prefix = api_key[:8] if len(api_key) >= 8 else api_key
+            api_key_records = db.query(APIKey).filter(
+                APIKey.key_prefix == prefix,
+                APIKey.is_active == True
+            ).all()
+
+            for key_record in api_key_records:
+                if verify_api_key(api_key, key_record.key_hash):
+                    if key_record.expires_at and key_record.expires_at < __import__("datetime").datetime.utcnow():
+                        continue
+                    user = key_record.user
+                    if user and user.is_active:
+                        key_record.last_used_at = __import__("datetime").datetime.utcnow()
+                        db.commit()
+                        return user
+        return None
+    finally:
+        db.close()
+
+
 @router.websocket("/ws/tasks/{task_id}")
 async def task_progress_websocket(websocket: WebSocket, task_id: str):
     """
@@ -67,6 +113,11 @@ async def task_progress_websocket(websocket: WebSocket, task_id: str):
         "message": "Processing router..."
     }
     """
+    user = await _authenticate_websocket(websocket)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await manager.connect(websocket, task_id)
 
     try:
@@ -151,6 +202,11 @@ async def global_status_websocket(websocket: WebSocket):
     - Online/offline count
     - Running tasks
     """
+    user = await _authenticate_websocket(websocket)
+    if not user:
+        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
+        return
+
     await websocket.accept()
 
     try:
