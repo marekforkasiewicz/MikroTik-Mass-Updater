@@ -1,7 +1,7 @@
 """Role-based access control permissions"""
 
 from enum import Enum
-from typing import List
+from typing import Iterable, List, Sequence
 
 
 class Role(str, Enum):
@@ -144,6 +144,14 @@ ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
     ],
 }
 
+ROLE_LEVELS: dict[Role, int] = {
+    Role.VIEWER: 1,
+    Role.OPERATOR: 2,
+    Role.ADMIN: 3,
+}
+
+API_KEY_WILDCARD_SCOPE = "*"
+
 
 def get_permissions_for_role(role: Role) -> List[Permission]:
     """Get list of permissions for a role"""
@@ -165,3 +173,48 @@ def has_all_permissions(role: Role, permissions: List[Permission]) -> bool:
     """Check if a role has all of the specified permissions"""
     role_permissions = get_permissions_for_role(role)
     return all(p in role_permissions for p in permissions)
+
+
+def role_scope_name(role: Role) -> str:
+    """Return the API-key scope name for a role gate."""
+    return f"role:{role.value}"
+
+
+def parse_api_key_scopes(scopes: str | Sequence[str] | None) -> set[str]:
+    """Parse stored API key scopes into a normalized set."""
+    if not scopes:
+        return set()
+    if isinstance(scopes, str):
+        values = scopes.split(",")
+    else:
+        values = scopes
+    return {value.strip() for value in values if value and value.strip()}
+
+
+def serialize_api_key_scopes(scopes: Iterable[str]) -> str:
+    """Serialize API key scopes for database storage."""
+    return ",".join(sorted(parse_api_key_scopes(list(scopes))))
+
+
+def get_valid_api_key_scopes() -> set[str]:
+    """Return the set of accepted API key scopes."""
+    permission_scopes = {permission.value for permission in Permission}
+    role_scopes = {role_scope_name(role) for role in Role}
+    return permission_scopes | role_scopes | {API_KEY_WILDCARD_SCOPE}
+
+
+def get_default_api_key_scopes_for_role(role: Role) -> set[str]:
+    """Return the default scopes for a new API key created by the given role."""
+    scopes = {permission.value for permission in get_permissions_for_role(role)}
+    scopes.add(role_scope_name(role))
+    return scopes
+
+
+def role_scope_allows(allowed_roles: Sequence[Role], scope_roles: Sequence[Role]) -> bool:
+    """Check whether a scoped API key can satisfy a role-gated endpoint."""
+    for scoped_role in scope_roles:
+        scoped_level = ROLE_LEVELS[scoped_role]
+        for allowed_role in allowed_roles:
+            if scoped_level >= ROLE_LEVELS[allowed_role]:
+                return True
+    return False

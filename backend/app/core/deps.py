@@ -1,6 +1,7 @@
 """FastAPI dependencies for authentication and authorization"""
 
 from typing import Annotated, Optional, List
+from datetime import datetime
 
 from fastapi import Depends, HTTPException, status, Cookie, Header
 from fastapi.security import OAuth2PasswordBearer, APIKeyHeader
@@ -9,7 +10,18 @@ from sqlalchemy.orm import Session
 from ..database import get_db
 from ..models.user import User, APIKey
 from .security import decode_token, verify_api_key
-from .permissions import Role, Permission, has_permission, has_any_permission
+from .permissions import (
+    API_KEY_WILDCARD_SCOPE,
+    Role,
+    Permission,
+    get_default_api_key_scopes_for_role,
+    has_permission,
+    has_any_permission,
+    parse_api_key_scopes,
+    role_scope_allows,
+    role_scope_name,
+    serialize_api_key_scopes,
+)
 
 
 # OAuth2 scheme for token authentication
@@ -17,6 +29,25 @@ oauth2_scheme = OAuth2PasswordBearer(tokenUrl="/api/auth/login", auto_error=Fals
 
 # API Key header scheme
 api_key_header = APIKeyHeader(name="X-API-Key", auto_error=False)
+
+
+def _set_auth_context(
+    user: User,
+    *,
+    via_api_key: bool = False,
+    api_key_scopes: Optional[set[str]] = None,
+    api_key_id: Optional[int] = None,
+) -> User:
+    """Attach authentication context to the loaded user object."""
+    setattr(user, "_auth_via_api_key", via_api_key)
+    setattr(user, "_api_key_scopes", api_key_scopes or set())
+    setattr(user, "_api_key_id", api_key_id)
+    return user
+
+
+def _get_api_key_scopes(current_user: User) -> set[str]:
+    """Return normalized API-key scopes attached to the current user."""
+    return set(getattr(current_user, "_api_key_scopes", set()) or set())
 
 
 async def get_token_from_cookie_or_header(
@@ -50,6 +81,8 @@ async def get_current_user(
             user_id = payload.get("sub")
             if user_id:
                 user = db.query(User).filter(User.id == int(user_id)).first()
+                if user:
+                    user = _set_auth_context(user, via_api_key=False)
 
     # Try API key authentication if token didn't work
     if not user and api_key:
@@ -63,12 +96,24 @@ async def get_current_user(
         for key_record in api_key_records:
             if verify_api_key(api_key, key_record.key_hash):
                 # Check expiration
-                if key_record.expires_at and key_record.expires_at < __import__('datetime').datetime.utcnow():
+                if key_record.expires_at and key_record.expires_at < datetime.utcnow():
                     continue
                 user = key_record.user
                 # Update last used
-                key_record.last_used_at = __import__('datetime').datetime.utcnow()
+                scopes = parse_api_key_scopes(key_record.scopes)
+                if user and not scopes:
+                    scopes = get_default_api_key_scopes_for_role(Role(user.role))
+                    key_record.scopes = serialize_api_key_scopes(scopes)
+
+                key_record.last_used_at = datetime.utcnow()
                 db.commit()
+                if user:
+                    user = _set_auth_context(
+                        user,
+                        via_api_key=True,
+                        api_key_scopes=scopes,
+                        api_key_id=key_record.id,
+                    )
                 break
 
     if not user:
@@ -119,6 +164,19 @@ def require_role(allowed_roles: List[Role]):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
             )
+
+        if getattr(current_user, "_auth_via_api_key", False):
+            scopes = _get_api_key_scopes(current_user)
+            if API_KEY_WILDCARD_SCOPE not in scopes:
+                scoped_roles = []
+                for role in Role:
+                    if role_scope_name(role) in scopes:
+                        scoped_roles.append(role)
+                if not role_scope_allows(allowed_roles, scoped_roles):
+                    raise HTTPException(
+                        status_code=status.HTTP_403_FORBIDDEN,
+                        detail="API key scope does not allow this operation"
+                    )
         return current_user
     return role_checker
 
@@ -134,6 +192,14 @@ def require_permission(permission: Permission):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail=f"Permission denied: {permission.value}"
             )
+
+        if getattr(current_user, "_auth_via_api_key", False):
+            scopes = _get_api_key_scopes(current_user)
+            if API_KEY_WILDCARD_SCOPE not in scopes and permission.value not in scopes:
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail=f"API key scope denied: {permission.value}"
+                )
         return current_user
     return permission_checker
 
@@ -149,6 +215,16 @@ def require_any_permission(permissions: List[Permission]):
                 status_code=status.HTTP_403_FORBIDDEN,
                 detail="Not enough permissions"
             )
+
+        if getattr(current_user, "_auth_via_api_key", False):
+            scopes = _get_api_key_scopes(current_user)
+            if API_KEY_WILDCARD_SCOPE not in scopes and not any(
+                permission.value in scopes for permission in permissions
+            ):
+                raise HTTPException(
+                    status_code=status.HTTP_403_FORBIDDEN,
+                    detail="API key scope does not allow this operation"
+                )
         return current_user
     return permission_checker
 

@@ -2,7 +2,9 @@
 
 from datetime import datetime
 from typing import Optional, List
-from pydantic import BaseModel, EmailStr, Field
+from pydantic import BaseModel, EmailStr, Field, field_validator
+
+from ..core.permissions import get_valid_api_key_scopes, parse_api_key_scopes
 
 
 # Base schemas
@@ -75,6 +77,23 @@ class PasswordChangeRequest(BaseModel):
 class APIKeyBase(BaseModel):
     name: str = Field(..., max_length=100)
     scopes: Optional[List[str]] = None
+
+    @field_validator("scopes", mode="before")
+    @classmethod
+    def normalize_scopes(cls, value):
+        """Normalize DB strings and validate user-provided scopes."""
+        if value is None:
+            return None
+
+        normalized = sorted(parse_api_key_scopes(value))
+        if not normalized:
+            return None
+
+        invalid = [scope for scope in normalized if scope not in get_valid_api_key_scopes()]
+        if invalid:
+            raise ValueError(f"Invalid API key scopes: {', '.join(invalid)}")
+
+        return normalized
 
 
 class APIKeyCreate(APIKeyBase):

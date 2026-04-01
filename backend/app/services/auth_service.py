@@ -13,6 +13,12 @@ from ..core.security import (
     create_access_token, create_refresh_token,
     decode_token, generate_api_key
 )
+from ..core.permissions import (
+    Role,
+    get_default_api_key_scopes_for_role,
+    parse_api_key_scopes,
+    serialize_api_key_scopes,
+)
 from ..config import settings
 
 logger = logging.getLogger(__name__)
@@ -171,6 +177,13 @@ class AuthService:
         """Create API key for user"""
         key, key_hash = generate_api_key()
         key_prefix = key[:8]
+        user = self.db.query(User).filter(User.id == user_id).first()
+        if not user:
+            raise ValueError("User not found")
+
+        effective_scopes = parse_api_key_scopes(scopes)
+        if not effective_scopes:
+            effective_scopes = get_default_api_key_scopes_for_role(Role(user.role))
 
         expires_at = None
         if expires_in_days:
@@ -181,7 +194,7 @@ class AuthService:
             name=name,
             key_hash=key_hash,
             key_prefix=key_prefix,
-            scopes=",".join(scopes) if scopes else None,
+            scopes=serialize_api_key_scopes(effective_scopes),
             expires_at=expires_at
         )
         self.db.add(api_key)

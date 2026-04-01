@@ -186,9 +186,10 @@ async def create_api_key(
         expires_in_days=key_data.expires_in_days
     )
 
-    response = APIKeyCreatedResponse.model_validate(api_key)
-    response.key = full_key
-    return response
+    return APIKeyCreatedResponse(
+        **APIKeyResponse.model_validate(api_key).model_dump(),
+        key=full_key,
+    )
 
 
 @router.delete("/me/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
