@@ -1,4 +1,4 @@
-import{B as BS,o as LS,C as jS,a as ft,b as bt,e as C,f as wr,k as sv,t as $t,p as zS,h as Ds,w as HS,F as WS,i as VS,I as US,X as KS,Y as qn,r as Zr,Z as GS,n as YS}from"./index-_nghZO34.js";import{M as qS}from"./bootstrap.esm-D7Q7Nh7Y.js";const XS="/icons/router-edge.svg",ZS="/icons/router.svg",JS="/icons/access-point.svg",QS="/icons/wireless-bridge.svg";/**
+import{B as BS,o as LS,C as jS,a as ft,b as bt,e as C,f as wr,k as sv,t as $t,p as zS,h as Ds,w as HS,F as WS,i as VS,I as US,X as KS,Y as qn,r as Zr,Z as GS,n as YS}from"./index-BPcqHFye.js";import{M as qS}from"./bootstrap.esm-D7Q7Nh7Y.js";const XS="/icons/router-edge.svg",ZS="/icons/router.svg",JS="/icons/access-point.svg",QS="/icons/wireless-bridge.svg";/**
  * vis-data
  * http://visjs.org/
  *

@@ -17,6 +17,7 @@ from ..services.backup_service import BackupService
 from ..services.router_service import RouterService, HostInfo
 from ..services.task_log_service import TaskLogService
 from ..core.enums import TaskStatus, TaskType, UpdateTree
+from ..core.deps import CurrentUser, OperatorUser
 from ..config import settings
 
 task_logger = logging.getLogger("task_operations")
@@ -252,10 +253,11 @@ def run_update_task(task_id: str, config: dict, db_url: str):
 
 @router.get("", response_model=TaskListResponse)
 def list_tasks(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 50,
     status: Optional[str] = None,
-    db: Session = Depends(get_db)
 ):
     """Get list of tasks"""
     query = db.query(Task)
@@ -272,6 +274,7 @@ def list_tasks(
 @router.post("", response_model=TaskResponse)
 def create_task(
     task_data: TaskCreate,
+    current_user: OperatorUser,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db)
 ):
@@ -300,7 +303,11 @@ def create_task(
 
 
 @router.get("/{task_id}", response_model=TaskResponse)
-def get_task(task_id: str, db: Session = Depends(get_db)):
+def get_task(
+    task_id: str,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
     """Get task status"""
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -309,7 +316,11 @@ def get_task(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.post("/{task_id}/cancel")
-def cancel_task(task_id: str, db: Session = Depends(get_db)):
+def cancel_task(
+    task_id: str,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Cancel a running task"""
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -329,7 +340,11 @@ def cancel_task(task_id: str, db: Session = Depends(get_db)):
 
 
 @router.delete("/{task_id}")
-def delete_task(task_id: str, db: Session = Depends(get_db)):
+def delete_task(
+    task_id: str,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Delete a task"""
     task = db.query(Task).filter(Task.id == task_id).first()
     if not task:
@@ -347,6 +362,7 @@ def delete_task(task_id: str, db: Session = Depends(get_db)):
 @router.post("/update", response_model=TaskResponse)
 def start_update_task(
     config: UpdateConfig,
+    current_user: OperatorUser,
     background_tasks: BackgroundTasks = BackgroundTasks(),
     db: Session = Depends(get_db)
 ):
@@ -375,7 +391,7 @@ def start_update_task(
 # ============== Log Files Management Endpoints ==============
 
 @router.get("/logs/files")
-def list_log_files():
+def list_log_files(current_user: CurrentUser):
     """List all log files with metadata and summary"""
     files = TaskLogService.list_log_files()
     stats = TaskLogService.get_statistics()
@@ -387,7 +403,11 @@ def list_log_files():
 
 
 @router.get("/logs/files/{filename}")
-def get_log_file(filename: str, raw: bool = False):
+def get_log_file(
+    filename: str,
+    current_user: CurrentUser,
+    raw: bool = False,
+):
     """Get content of a specific log file. Use raw=true for plain text."""
     try:
         if raw:
@@ -402,7 +422,7 @@ def get_log_file(filename: str, raw: bool = False):
 
 
 @router.get("/logs/files/{filename}/raw", response_class=PlainTextResponse)
-def get_log_file_raw(filename: str):
+def get_log_file_raw(filename: str, current_user: CurrentUser):
     """Get raw content of a log file"""
     try:
         content = TaskLogService.read_log_file(filename)
@@ -412,7 +432,7 @@ def get_log_file_raw(filename: str):
 
 
 @router.delete("/logs/files/{filename}")
-def delete_log_file(filename: str):
+def delete_log_file(filename: str, current_user: OperatorUser):
     """Delete a specific log file"""
     try:
         TaskLogService.delete_log_file(filename)
@@ -422,7 +442,10 @@ def delete_log_file(filename: str):
 
 
 @router.delete("/logs/cleanup")
-def cleanup_old_logs(days: int = 30):
+def cleanup_old_logs(
+    current_user: OperatorUser,
+    days: int = 30,
+):
     """Delete log files older than specified days"""
     deleted = TaskLogService.delete_old_logs(days)
     return {
@@ -432,6 +455,6 @@ def cleanup_old_logs(days: int = 30):
 
 
 @router.get("/logs/statistics")
-def get_log_statistics():
+def get_log_statistics(current_user: CurrentUser):
     """Get overall statistics from all log files"""
     return TaskLogService.get_statistics()

@@ -228,16 +228,25 @@ class AuthService:
     def ensure_admin_exists(self):
         """Ensure at least one admin user exists"""
         admin = self.db.query(User).filter(User.role == "admin").first()
-        if not admin:
-            logger.info("No admin user found, creating default admin")
-            admin = User(
-                username="admin",
-                email="admin@example.com",
-                full_name="Administrator",
-                role="admin",
-                is_superuser=True,
-                hashed_password=hash_password(settings.DEFAULT_ADMIN_PASSWORD)
+        if admin:
+            return
+
+        if not settings.DEFAULT_ADMIN_PASSWORD:
+            logger.warning(
+                "No admin user found and DEFAULT_ADMIN_PASSWORD is not configured. "
+                "Skipping automatic admin creation."
             )
-            self.db.add(admin)
-            self.db.commit()
-            logger.info("Default admin user created (username: admin)")
+            return
+
+        logger.info("No admin user found, creating default admin")
+        admin = User(
+            username="admin",
+            email="admin@example.com",
+            full_name="Administrator",
+            role="admin",
+            is_superuser=True,
+            hashed_password=hash_password(settings.DEFAULT_ADMIN_PASSWORD)
+        )
+        self.db.add(admin)
+        self.db.commit()
+        logger.info("Default admin user created (username: admin)")

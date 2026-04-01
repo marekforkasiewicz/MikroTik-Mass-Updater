@@ -5,17 +5,16 @@ from typing import Optional, List
 from pydantic import BaseModel, Field
 
 
-class RouterBase(BaseModel):
-    """Base router schema"""
+class RouterPublicBase(BaseModel):
+    """Fields safe to return to clients"""
     ip: str = Field(..., description="Router IP address")
     port: int = Field(default=8728, description="API port")
     username: Optional[str] = Field(None, description="API username")
-    password: Optional[str] = Field(None, description="API password")
 
 
-class RouterCreate(RouterBase):
+class RouterCreate(RouterPublicBase):
     """Schema for creating a router"""
-    pass
+    password: Optional[str] = Field(None, description="API password")
 
 
 class RouterUpdate(BaseModel):
@@ -26,7 +25,7 @@ class RouterUpdate(BaseModel):
     password: Optional[str] = None
 
 
-class RouterResponse(RouterBase):
+class RouterResponse(RouterPublicBase):
     """Schema for router response"""
     id: int
     identity: Optional[str] = None

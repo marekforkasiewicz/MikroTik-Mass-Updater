@@ -12,6 +12,7 @@ from ..schemas.router import (
     RouterImport, RouterListResponse
 )
 from ..services.router_service import RouterService
+from ..core.deps import CurrentUser, OperatorUser
 from .scan import _is_newer_version
 
 router = APIRouter(prefix="/routers", tags=["routers"])
@@ -19,9 +20,10 @@ router = APIRouter(prefix="/routers", tags=["routers"])
 
 @router.get("", response_model=RouterListResponse)
 def list_routers(
+    current_user: CurrentUser,
+    db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
-    db: Session = Depends(get_db)
 ):
     """Get list of all routers"""
     routers = db.query(Router).offset(skip).limit(limit).all()
@@ -40,7 +42,11 @@ def list_routers(
 
 
 @router.post("", response_model=RouterResponse, status_code=status.HTTP_201_CREATED)
-def create_router(router_data: RouterCreate, db: Session = Depends(get_db)):
+def create_router(
+    router_data: RouterCreate,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Add a new router"""
     # Check if router with this IP already exists
     existing = db.query(Router).filter(Router.ip == router_data.ip).first()
@@ -58,7 +64,11 @@ def create_router(router_data: RouterCreate, db: Session = Depends(get_db)):
 
 
 @router.get("/{router_id}", response_model=RouterResponse)
-def get_router(router_id: int, db: Session = Depends(get_db)):
+def get_router(
+    router_id: int,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
     """Get a specific router by ID"""
     router_obj = db.query(Router).filter(Router.id == router_id).first()
     if not router_obj:
@@ -73,6 +83,7 @@ def get_router(router_id: int, db: Session = Depends(get_db)):
 def update_router(
     router_id: int,
     router_data: RouterUpdate,
+    current_user: OperatorUser,
     db: Session = Depends(get_db)
 ):
     """Update a router"""
@@ -94,7 +105,11 @@ def update_router(
 
 
 @router.delete("/{router_id}", status_code=status.HTTP_204_NO_CONTENT)
-def delete_router(router_id: int, db: Session = Depends(get_db)):
+def delete_router(
+    router_id: int,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Delete a router"""
     router_obj = db.query(Router).filter(Router.id == router_id).first()
     if not router_obj:
@@ -108,7 +123,11 @@ def delete_router(router_id: int, db: Session = Depends(get_db)):
 
 
 @router.post("/import", response_model=RouterListResponse)
-def import_routers(import_data: RouterImport, db: Session = Depends(get_db)):
+def import_routers(
+    import_data: RouterImport,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Import routers from list.txt format"""
     hosts = RouterService.parse_host_file(import_data.content)
 
@@ -168,6 +187,7 @@ def import_routers(import_data: RouterImport, db: Session = Depends(get_db)):
 def change_update_channel(
     router_id: int,
     channel: str,
+    current_user: OperatorUser,
     db: Session = Depends(get_db)
 ):
     """

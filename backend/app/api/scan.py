@@ -14,6 +14,7 @@ from ..schemas.task import TaskResponse
 from ..services.scan_service import ScanService
 from ..services.router_service import RouterService, HostInfo
 from ..core.enums import TaskStatus, TaskType
+from ..core.deps import CurrentUser, OperatorUser
 from ..config import settings
 import re
 
@@ -283,9 +284,10 @@ def run_full_scan_task(task_id: str, router_ids: Optional[List[int]], db_url: st
 
 @router.post("/quick", response_model=TaskResponse)
 def start_quick_scan(
+    current_user: OperatorUser,
+    db: Session = Depends(get_db),
     router_ids: Optional[List[int]] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    db: Session = Depends(get_db)
 ):
     """
     Start a quick network scan.
@@ -317,9 +319,10 @@ def start_quick_scan(
 
 @router.post("/full", response_model=TaskResponse)
 def start_full_scan(
+    current_user: OperatorUser,
+    db: Session = Depends(get_db),
     router_ids: Optional[List[int]] = None,
     background_tasks: BackgroundTasks = BackgroundTasks(),
-    db: Session = Depends(get_db)
 ):
     """
     Start a full network scan.
@@ -350,7 +353,11 @@ def start_full_scan(
 
 
 @router.get("/quick/single/{router_id}", response_model=QuickScanResult)
-def quick_scan_single(router_id: int, db: Session = Depends(get_db)):
+def quick_scan_single(
+    router_id: int,
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Quick scan a single router (synchronous)"""
     router = db.query(Router).filter(Router.id == router_id).first()
     if not router:
@@ -434,7 +441,11 @@ def quick_scan_single(router_id: int, db: Session = Depends(get_db)):
 
 
 @router.get("/firmware/{router_id}")
-def check_firmware_status(router_id: int, db: Session = Depends(get_db)):
+def check_firmware_status(
+    router_id: int,
+    current_user: CurrentUser,
+    db: Session = Depends(get_db)
+):
     """Check firmware status of a single router"""
     router_obj = db.query(Router).filter(Router.id == router_id).first()
     if not router_obj:

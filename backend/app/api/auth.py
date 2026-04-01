@@ -19,6 +19,19 @@ from ..config import settings
 router = APIRouter(prefix="/auth", tags=["Authentication"])
 
 
+def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> None:
+    """Apply consistent cookie settings for auth tokens."""
+    response.set_cookie(
+        key=key,
+        value=value,
+        httponly=True,
+        secure=settings.COOKIE_SECURE,
+        samesite=settings.COOKIE_SAMESITE,
+        domain=settings.COOKIE_DOMAIN,
+        max_age=max_age,
+    )
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
     response: Response,
@@ -37,19 +50,17 @@ async def login(
         )
 
     # Set cookies for browser-based auth
-    response.set_cookie(
-        key="access_token",
-        value=result.access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "access_token",
+        result.access_token,
+        settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
-    response.set_cookie(
-        key="refresh_token",
-        value=result.refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "refresh_token",
+        result.refresh_token,
+        settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return result
@@ -72,19 +83,17 @@ async def login_json(
         )
 
     # Set cookies
-    response.set_cookie(
-        key="access_token",
-        value=result.access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "access_token",
+        result.access_token,
+        settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
-    response.set_cookie(
-        key="refresh_token",
-        value=result.refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "refresh_token",
+        result.refresh_token,
+        settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return result
@@ -118,19 +127,17 @@ async def refresh_token(
     access_token, new_refresh_token = result
 
     # Update cookies
-    response.set_cookie(
-        key="access_token",
-        value=access_token,
-        httponly=True,
-        max_age=settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "access_token",
+        access_token,
+        settings.ACCESS_TOKEN_EXPIRE_MINUTES * 60,
     )
-    response.set_cookie(
-        key="refresh_token",
-        value=new_refresh_token,
-        httponly=True,
-        max_age=settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
-        samesite="lax"
+    _set_auth_cookie(
+        response,
+        "refresh_token",
+        new_refresh_token,
+        settings.REFRESH_TOKEN_EXPIRE_DAYS * 24 * 60 * 60,
     )
 
     return TokenResponse(

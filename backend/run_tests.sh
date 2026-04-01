@@ -12,11 +12,21 @@ NC='\033[0m' # No Color
 echo -e "${GREEN}=== MikroTik Mass Updater - API Tests ===${NC}"
 echo ""
 
-# Check for pytest
-if ! command -v pytest &> /dev/null; then
-    echo -e "${RED}pytest not found. Installing...${NC}"
-    pip install pytest pytest-asyncio requests
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+REPO_DIR="$(dirname "$SCRIPT_DIR")"
+
+if [ -x "$REPO_DIR/venv/bin/python" ]; then
+    PYTHON_BIN="$REPO_DIR/venv/bin/python"
+else
+    PYTHON_BIN="$(command -v python3)"
 fi
+
+if [ -z "$PYTHON_BIN" ]; then
+    echo -e "${RED}python3 not found.${NC}"
+    exit 1
+fi
+
+PYTEST_CMD=("$PYTHON_BIN" -m pytest)
 
 # Parse arguments
 INTEGRATION=false
@@ -64,7 +74,7 @@ while [[ $# -gt 0 ]]; do
     esac
 done
 
-cd "$(dirname "$0")"
+cd "$SCRIPT_DIR"
 
 if [ "$INTEGRATION" = true ]; then
     if [ -z "$ROUTER_HOST" ]; then
@@ -79,12 +89,12 @@ if [ "$INTEGRATION" = true ]; then
     export ROUTEROS_USER="$ROUTER_USER"
     export ROUTEROS_PASS="$ROUTER_PASS"
 
-    pytest tests/test_routeros_api.py -v --tb=short
+    "${PYTEST_CMD[@]}" tests/test_routeros_api.py -v --tb=short
 else
     echo -e "${YELLOW}Running unit tests only (use -i for integration tests)${NC}"
     echo ""
 
-    pytest tests/test_routeros_api.py -v --tb=short -m "not integration"
+    "${PYTEST_CMD[@]}" tests/test_routeros_api.py -v --tb=short -m "not integration"
 fi
 
 echo ""
