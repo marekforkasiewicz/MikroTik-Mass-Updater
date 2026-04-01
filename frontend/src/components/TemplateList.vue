@@ -723,11 +723,12 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, onUnmounted, nextTick, watch } from 'vue'
+import { ref, computed, onMounted, nextTick, watch } from 'vue'
 import { Modal } from 'bootstrap'
 import { templatesApi, routerApi, taskApi, createTaskWebSocket } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 import { useMainStore } from '../stores/main'
+import { useTemplateDeployment } from '../composables/useTemplateDeployment'
 
 const mainStore = useMainStore()
 
@@ -755,21 +756,6 @@ const previewLoading = ref(false)
 
 // Deploy
 const showDeployModal = ref(false)
-const deploying = ref(false)
-const deployForm = ref({
-  router_ids: [],
-  variables: {},
-  dry_run: false,
-  backup_before: true
-})
-const deployResults = ref([])
-const selectedRendered = ref(null)
-
-// Task-based deployment
-const deployTaskId = ref(null)
-const deployTaskStatus = ref(null)
-const deployProgress = ref({ current: 0, total: 0, currentItem: '', message: '' })
-let deployWebSocket = null
 
 // Profiles
 const showProfilesModal = ref(false)
@@ -829,10 +815,30 @@ const filteredTemplates = computed(() => {
   return result
 })
 
-const deployProgressPercent = computed(() => {
-  if (deployProgress.value.total === 0) return 0
-  return Math.round((deployProgress.value.current / deployProgress.value.total) * 100)
+const deployment = useTemplateDeployment({
+  templatesApi,
+  taskApi,
+  createTaskWebSocket,
+  notify: (type, message) => mainStore.addNotification(type, message)
 })
+
+const {
+  deploying,
+  deployForm,
+  deployResults,
+  selectedRendered,
+  deployTaskId,
+  deployTaskStatus,
+  deployProgress,
+  deployProgressPercent,
+  selectAllRouters,
+  selectOnlineRouters,
+  resetDeployModal,
+  deployTemplate: runDeployment,
+  cancelDeployment,
+  showRenderedContent,
+  getStatusBadgeClass
+} = deployment
 
 // Lifecycle
 onMounted(async () => {
@@ -871,17 +877,6 @@ watch(showHistoryModal, (val) => {
 
 watch(showHelpModal, (val) => {
   if (val) helpModal?.show()
-})
-
-onUnmounted(() => {
-  if (deployWebSocket) {
-    deployWebSocket.close()
-    deployWebSocket = null
-  }
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
 })
 
 // Methods
@@ -1066,220 +1061,12 @@ async function handleDeleteConfirm() {
   }
 }
 
-// Deploy methods
-function selectAllRouters() {
-  deployForm.value.router_ids = routers.value.map(r => r.id)
-}
-
-function selectOnlineRouters() {
-  deployForm.value.router_ids = routers.value.filter(r => r.is_online).map(r => r.id)
-}
-
-function resetDeployModal() {
-  deployResults.value = []
-  selectedRendered.value = null
-  deployTaskId.value = null
-  deployTaskStatus.value = null
-  deployProgress.value = { current: 0, total: 0, currentItem: '', message: '' }
-  if (deployWebSocket) {
-    deployWebSocket.close()
-    deployWebSocket = null
-  }
-  if (pollInterval) {
-    clearInterval(pollInterval)
-    pollInterval = null
-  }
-}
-
 async function deployTemplate() {
-  if (deployForm.value.router_ids.length === 0) {
-    mainStore.addNotification('warning', 'Please select at least one router')
+  if (!editingTemplate.value?.id) {
+    mainStore.addNotification('warning', 'Select a template first')
     return
   }
-
-  deploying.value = true
-  deployResults.value = []
-  deployTaskId.value = null
-  deployTaskStatus.value = null
-  deployProgress.value = { current: 0, total: 0, currentItem: '', message: '' }
-
-  try {
-    const response = await templatesApi.deploy(editingTemplate.value.id, {
-      router_ids: deployForm.value.router_ids,
-      variables: deployForm.value.variables,
-      dry_run: deployForm.value.dry_run,
-      backup_before: deployForm.value.backup_before
-    })
-
-    // For dry_run, show results immediately
-    if (deployForm.value.dry_run) {
-      deployResults.value = response.results || []
-      deploying.value = false
-      const succeeded = deployResults.value.filter(r => r.status === 'dry_run').length
-      mainStore.addNotification('success', `Preview generated for ${succeeded} router(s)`)
-      return
-    }
-
-    // For actual deployment, track via WebSocket
-    if (response.task_id) {
-      deployTaskId.value = response.task_id
-      deployTaskStatus.value = 'running'
-      deployProgress.value.total = response.total_routers
-      deployResults.value = response.results || []
-
-      // Connect to WebSocket for real-time updates
-      connectToDeployWebSocket(response.task_id)
-    } else {
-      // Fallback for non-task response (shouldn't happen)
-      deployResults.value = response.results || []
-      deploying.value = false
-    }
-  } catch (error) {
-    console.error('Failed to deploy template:', error)
-    mainStore.addNotification('error', 'Deployment failed: ' + error.message)
-    deploying.value = false
-  }
-}
-
-function connectToDeployWebSocket(taskId) {
-  if (deployWebSocket) {
-    deployWebSocket.close()
-  }
-
-  deployWebSocket = createTaskWebSocket(
-    taskId,
-    (data) => {
-      // Update progress from WebSocket message
-      if (data.progress !== undefined) {
-        deployProgress.value.current = data.progress
-      }
-      if (data.total !== undefined) {
-        deployProgress.value.total = data.total
-      }
-      if (data.current_item) {
-        deployProgress.value.currentItem = data.current_item
-      }
-      if (data.current_message) {
-        deployProgress.value.message = data.current_message
-      }
-      if (data.status) {
-        deployTaskStatus.value = data.status
-      }
-
-      // Update results if available
-      if (data.results) {
-        deployResults.value = data.results.routers || []
-      }
-
-      // Check if task is complete
-      if (data.status === 'completed' || data.status === 'failed') {
-        deploying.value = false
-        deployWebSocket?.close()
-        deployWebSocket = null
-
-        // Load final results from task
-        loadTaskResults(taskId)
-      }
-    },
-    (error) => {
-      console.error('WebSocket error:', error)
-      // Fall back to polling if WebSocket fails
-      startTaskPolling(taskId)
-    }
-  )
-}
-
-async function loadTaskResults(taskId) {
-  try {
-    const task = await taskApi.get(taskId)
-    if (task.results?.routers) {
-      deployResults.value = task.results.routers
-    }
-
-    const succeeded = deployResults.value.filter(r => r.status === 'completed').length
-    const failed = deployResults.value.filter(r => r.status === 'failed').length
-
-    if (task.status === 'completed' && failed === 0) {
-      mainStore.addNotification('success', `Deployed to ${succeeded} router(s)`)
-    } else if (task.status === 'completed') {
-      mainStore.addNotification('warning', `Deployed to ${succeeded} router(s), ${failed} failed`)
-    } else if (task.status === 'failed') {
-      mainStore.addNotification('error', `Deployment failed: ${task.error || 'Unknown error'}`)
-    }
-  } catch (error) {
-    console.error('Failed to load task results:', error)
-  }
-}
-
-let pollInterval = null
-
-function startTaskPolling(taskId) {
-  if (pollInterval) {
-    clearInterval(pollInterval)
-  }
-
-  pollInterval = setInterval(async () => {
-    try {
-      const task = await taskApi.get(taskId)
-
-      deployProgress.value.current = task.progress || 0
-      deployProgress.value.total = task.total || 0
-      deployProgress.value.currentItem = task.current_item || ''
-      deployProgress.value.message = task.current_message || ''
-      deployTaskStatus.value = task.status
-
-      if (task.status === 'completed' || task.status === 'failed') {
-        clearInterval(pollInterval)
-        pollInterval = null
-        deploying.value = false
-        loadTaskResults(taskId)
-      }
-    } catch (error) {
-      console.error('Polling error:', error)
-      clearInterval(pollInterval)
-      pollInterval = null
-      deploying.value = false
-    }
-  }, 2000)
-}
-
-async function cancelDeployment() {
-  if (!deployTaskId.value) return
-
-  try {
-    await taskApi.cancel(deployTaskId.value)
-    mainStore.addNotification('info', 'Deployment cancelled')
-    deploying.value = false
-    deployTaskStatus.value = 'cancelled'
-    if (deployWebSocket) {
-      deployWebSocket.close()
-      deployWebSocket = null
-    }
-    if (pollInterval) {
-      clearInterval(pollInterval)
-      pollInterval = null
-    }
-  } catch (error) {
-    console.error('Failed to cancel deployment:', error)
-    mainStore.addNotification('error', 'Failed to cancel deployment')
-  }
-}
-
-function showRenderedContent(result) {
-  selectedRendered.value = {
-    router: result.router_identity || result.router_ip,
-    content: result.rendered_content
-  }
-}
-
-function getStatusBadgeClass(status) {
-  switch (status) {
-    case 'completed': return 'badge bg-success'
-    case 'dry_run': return 'badge bg-info'
-    case 'failed': return 'badge bg-danger'
-    case 'pending': return 'badge bg-warning'
-    default: return 'badge bg-secondary'
-  }
+  await runDeployment(editingTemplate.value.id)
 }
 
 async function showDeployments() {
