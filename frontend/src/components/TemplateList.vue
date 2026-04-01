@@ -723,16 +723,17 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Modal } from 'bootstrap'
+import { ref, computed, onMounted, watch } from 'vue'
 import { templatesApi, routerApi, taskApi, createTaskWebSocket } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 import { useMainStore } from '../stores/main'
 import { useTemplateDeployment } from '../composables/useTemplateDeployment'
 import { useTemplateProfiles } from '../composables/useTemplateProfiles'
 import { useTemplateInsights } from '../composables/useTemplateInsights'
+import { useModalManager } from '../composables/useModalManager'
 
 const mainStore = useMainStore()
+const { registerModal, showModal, hideModal } = useModalManager()
 
 // Data
 const templates = ref([])
@@ -766,12 +767,6 @@ const profilesModalEl = ref(null)
 const profileEditModalEl = ref(null)
 const historyModalEl = ref(null)
 const helpModalEl = ref(null)
-let previewModal = null
-let deployModal = null
-let profilesModal = null
-let profileEditModal = null
-let historyModal = null
-let helpModal = null
 
 // Computed
 const filteredTemplates = computed(() => {
@@ -864,41 +859,39 @@ const {
 
 // Lifecycle
 onMounted(async () => {
+  registerModal('preview', previewModalEl)
+  registerModal('deploy', deployModalEl)
+  registerModal('profiles', profilesModalEl)
+  registerModal('profileEdit', profileEditModalEl)
+  registerModal('history', historyModalEl)
+  registerModal('help', helpModalEl)
+
   await Promise.all([
     loadTemplates(),
     loadRouters(),
     loadProfiles(),
     loadCategories()
   ])
-
-  nextTick(() => {
-    if (previewModalEl.value) previewModal = new Modal(previewModalEl.value)
-    if (deployModalEl.value) deployModal = new Modal(deployModalEl.value)
-    if (profilesModalEl.value) profilesModal = new Modal(profilesModalEl.value)
-    if (profileEditModalEl.value) profileEditModal = new Modal(profileEditModalEl.value)
-    if (historyModalEl.value) historyModal = new Modal(historyModalEl.value)
-    if (helpModalEl.value) helpModal = new Modal(helpModalEl.value)
-  })
 })
 
 watch(showDeployModal, (val) => {
-  if (val) deployModal?.show()
+  if (val) showModal('deploy')
 })
 
 watch(showProfilesModal, (val) => {
-  if (val) profilesModal?.show()
+  if (val) showModal('profiles')
 })
 
 watch(showProfileEditModal, (val) => {
-  if (val) profileEditModal?.show()
+  if (val) showModal('profileEdit')
 })
 
 watch(showHistoryModal, (val) => {
-  if (val) historyModal?.show()
+  if (val) showModal('history')
 })
 
 watch(showHelpModal, (val) => {
-  if (val) helpModal?.show()
+  if (val) showModal('help')
 })
 
 // Methods
@@ -996,7 +989,7 @@ async function validateTemplate() {
 }
 
 async function previewTemplate() {
-  await runTemplatePreview(editingTemplate.value?.id, () => previewModal?.show())
+  await runTemplatePreview(editingTemplate.value?.id, () => showModal('preview'))
 }
 
 async function saveTemplate() {
@@ -1066,7 +1059,7 @@ async function showDeployments() {
 }
 
 async function saveProfile() {
-  await persistProfile(() => profileEditModal?.hide())
+  await persistProfile(() => hideModal('profileEdit'))
 }
 
 // Utilities
