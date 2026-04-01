@@ -391,6 +391,7 @@ import { getStatusBadgeClass, getBackupTypeBadge } from '../utils/badges'
 import ConfirmModal from './ConfirmModal.vue'
 import ResultsSummary from './shared/ResultsSummary.vue'
 import { useAutomationSchedules } from '../composables/useAutomationSchedules'
+import { useAutomationBackups } from '../composables/useAutomationBackups'
 
 const store = useMainStore()
 const schedulesStore = useSchedulesStore()
@@ -399,13 +400,6 @@ const schedulesStore = useSchedulesStore()
 const activeTab = ref('schedules')
 const saving = ref(false)
 const loadingTasks = ref(false)
-
-// Backups
-const backups = ref([])
-const routers = ref([])
-const showBackupModal = ref(false)
-const backupFilters = ref({ type: '', routerId: '' })
-const backupForm = ref({ router_id: '', backup_type: 'config' })
 
 // Tasks
 const tasks = computed(() => store.tasks)
@@ -441,13 +435,27 @@ const {
   toggleSchedule
 } = schedulesManager
 
-// Computed
-const filteredBackups = computed(() => {
-  let result = backups.value
-  if (backupFilters.value.type) result = result.filter(b => b.backup_type === backupFilters.value.type)
-  if (backupFilters.value.routerId) result = result.filter(b => b.router_id === backupFilters.value.routerId)
-  return result
+const backupsManager = useAutomationBackups({
+  backupsApi,
+  routerApi,
+  store
 })
+
+const {
+  backups,
+  routers,
+  showBackupModal,
+  backupFilters,
+  backupForm,
+  filteredBackups,
+  loadBackups,
+  loadRouters,
+  resetBackupForm,
+  createBackup: runCreateBackup,
+  downloadBackup,
+  restoreBackup: runRestoreBackup,
+  removeBackup
+} = backupsManager
 
 // Lifecycle
 onMounted(async () => {
@@ -469,24 +477,6 @@ watch(showBackupModal, (val) => { if (val) { resetBackupForm(); backupModal?.sho
 
 function openScheduleEditor(schedule) {
   editSchedule(schedule, () => scheduleModal?.show())
-}
-
-async function loadBackups() {
-  try {
-    const response = await backupsApi.list()
-    backups.value = response.items || []
-  } catch (error) {
-    console.error('Failed to load backups:', error)
-  }
-}
-
-async function loadRouters() {
-  try {
-    const response = await routerApi.list()
-    routers.value = response.routers || response.items || []
-  } catch (error) {
-    console.error('Failed to load routers:', error)
-  }
 }
 
 async function saveSchedule() {
@@ -516,30 +506,13 @@ function deleteSchedule(schedule) {
 }
 
 
-// Backup methods
 async function createBackup() {
   saving.value = true
   try {
-    await backupsApi.create(backupForm.value)
+    await runCreateBackup()
     backupModal?.hide()
-    await loadBackups()
-    store.addNotification('success', 'Backup created')
   } finally {
     saving.value = false
-  }
-}
-
-async function downloadBackup(backup) {
-  try {
-    const blob = await backupsApi.download(backup.id)
-    const url = window.URL.createObjectURL(blob)
-    const a = document.createElement('a')
-    a.href = url
-    a.download = backup.name
-    a.click()
-    window.URL.revokeObjectURL(url)
-  } catch (error) {
-    store.addNotification('error', 'Download failed')
   }
 }
 
@@ -548,8 +521,7 @@ function restoreBackup(backup) {
   confirmMessage.value = `Restore "${backup.name}"? Router will reboot.`
   confirmVariant.value = 'warning'
   pendingAction.value = async () => {
-    await backupsApi.restore({ router_id: backup.router_id, backup_id: backup.id, rollback_type: 'restore' })
-    store.addNotification('success', 'Restore initiated')
+    await runRestoreBackup(backup)
   }
   showConfirm.value = true
 }
@@ -559,14 +531,9 @@ function deleteBackup(backup) {
   confirmMessage.value = `Delete "${backup.name}"?`
   confirmVariant.value = 'danger'
   pendingAction.value = async () => {
-    await backupsApi.delete(backup.id)
-    await loadBackups()
+    await removeBackup(backup)
   }
   showConfirm.value = true
-}
-
-function resetBackupForm() {
-  backupForm.value = { router_id: '', backup_type: 'config' }
 }
 
 // Task methods
