@@ -4,7 +4,7 @@ import logging
 import io
 import csv
 import json
-from datetime import datetime
+from datetime import UTC, datetime
 from typing import Optional, List, Dict, Any
 from pathlib import Path
 
@@ -121,7 +121,7 @@ class ExportService:
             model_summary[model] = model_summary.get(model, 0) + 1
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "total_routers": len(routers),
             "online_count": sum(1 for r in routers if r.is_online),
             "offline_count": sum(1 for r in routers if not r.is_online),
@@ -159,7 +159,7 @@ class ExportService:
             })
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "date_range_start": filters.date_from.isoformat() if filters.date_from else None,
             "date_range_end": filters.date_to.isoformat() if filters.date_to else None,
             "total_updates": len(updates),
@@ -220,7 +220,7 @@ class ExportService:
         critical = sum(1 for h in health_data if h["status"] == "critical")
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "date_range_start": filters.date_from.isoformat() if filters.date_from else None,
             "date_range_end": filters.date_to.isoformat() if filters.date_to else None,
             "total_routers": len(routers),
@@ -258,7 +258,7 @@ class ExportService:
             })
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "total_activities": len(activities),
             "activities": activities
         }
@@ -292,7 +292,7 @@ class ExportService:
             })
 
         return {
-            "generated_at": datetime.utcnow().isoformat(),
+            "generated_at": datetime.now(UTC).isoformat(),
             "total_backups": len(backups),
             "total_size": sum(b.file_size or 0 for b in backups),
             "backups": backup_data
@@ -300,7 +300,7 @@ class ExportService:
 
     def _get_custom_data(self, filters: ReportFilter, sections: List[str] = None) -> Dict[str, Any]:
         """Get custom report data combining multiple sections"""
-        data = {"generated_at": datetime.utcnow().isoformat()}
+        data = {"generated_at": datetime.now(UTC).isoformat()}
 
         sections = sections or ["inventory", "health"]
 
@@ -325,7 +325,7 @@ class ExportService:
             from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer
             from reportlab.lib.styles import getSampleStyleSheet
 
-            filename = f"report_{request.report_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.pdf"
+            filename = f"report_{request.report_type}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.pdf"
             filepath = self.export_dir / filename
 
             doc = SimpleDocTemplate(str(filepath), pagesize=A4)
@@ -356,7 +356,7 @@ class ExportService:
                 "file_path": str(filepath),
                 "file_size": filepath.stat().st_size,
                 "download_url": f"/api/reports/download/{filename}",
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             }
 
         except ImportError:
@@ -415,7 +415,7 @@ class ExportService:
             from openpyxl import Workbook
             from openpyxl.styles import Font, PatternFill
 
-            filename = f"report_{request.report_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.xlsx"
+            filename = f"report_{request.report_type}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.xlsx"
             filepath = self.export_dir / filename
 
             wb = Workbook()
@@ -453,7 +453,7 @@ class ExportService:
                 "file_path": str(filepath),
                 "file_size": filepath.stat().st_size,
                 "download_url": f"/api/reports/download/{filename}",
-                "created_at": datetime.utcnow().isoformat()
+                "created_at": datetime.now(UTC).isoformat()
             }
 
         except ImportError:
@@ -462,7 +462,7 @@ class ExportService:
 
     def _generate_csv(self, request: ReportRequest, data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate CSV report"""
-        filename = f"report_{request.report_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.csv"
+        filename = f"report_{request.report_type}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.csv"
         filepath = self.export_dir / filename
 
         with open(filepath, 'w', newline='') as f:
@@ -489,12 +489,12 @@ class ExportService:
             "file_path": str(filepath),
             "file_size": filepath.stat().st_size,
             "download_url": f"/api/reports/download/{filename}",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         }
 
     def _generate_json(self, request: ReportRequest, data: Dict[str, Any]) -> Dict[str, Any]:
         """Generate JSON report"""
-        filename = f"report_{request.report_type}_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}.json"
+        filename = f"report_{request.report_type}_{datetime.now(UTC).strftime('%Y%m%d_%H%M%S')}.json"
         filepath = self.export_dir / filename
 
         with open(filepath, 'w') as f:
@@ -509,7 +509,7 @@ class ExportService:
             "file_path": str(filepath),
             "file_size": filepath.stat().st_size,
             "download_url": f"/api/reports/download/{filename}",
-            "created_at": datetime.utcnow().isoformat()
+            "created_at": datetime.now(UTC).isoformat()
         }
 
     def get_report_file(self, filename: str) -> Optional[Path]:

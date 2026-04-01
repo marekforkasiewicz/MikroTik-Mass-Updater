@@ -89,12 +89,12 @@ if [ "$INTEGRATION" = true ]; then
     export ROUTEROS_USER="$ROUTER_USER"
     export ROUTEROS_PASS="$ROUTER_PASS"
 
-    "${PYTEST_CMD[@]}" tests/test_routeros_api.py -v --tb=short
+    "${PYTEST_CMD[@]}" tests -v --tb=short
 else
     echo -e "${YELLOW}Running unit tests only (use -i for integration tests)${NC}"
     echo ""
 
-    "${PYTEST_CMD[@]}" tests/test_routeros_api.py -v --tb=short -m "not integration"
+    "${PYTEST_CMD[@]}" tests -v --tb=short -m "not integration"
 fi
 
 echo ""
