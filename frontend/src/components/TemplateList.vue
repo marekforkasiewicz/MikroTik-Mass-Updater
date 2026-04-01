@@ -729,12 +729,12 @@ import { templatesApi, routerApi, taskApi, createTaskWebSocket } from '../servic
 import ConfirmModal from './ConfirmModal.vue'
 import { useMainStore } from '../stores/main'
 import { useTemplateDeployment } from '../composables/useTemplateDeployment'
+import { useTemplateProfiles } from '../composables/useTemplateProfiles'
 
 const mainStore = useMainStore()
 
 // Data
 const templates = ref([])
-const profiles = ref([])
 const routers = ref([])
 const categories = ref([])
 const selectedTemplate = ref(null)
@@ -756,16 +756,6 @@ const previewLoading = ref(false)
 
 // Deploy
 const showDeployModal = ref(false)
-
-// Profiles
-const showProfilesModal = ref(false)
-const showProfileEditModal = ref(false)
-const editingProfile = ref(null)
-const savingProfile = ref(false)
-const profileModelFilter = ref('')
-const profileArchFilter = ref('')
-const profileVariablesJson = ref('{}')
-const matchingRouters = ref([])
 
 // Deployment History
 const showHistoryModal = ref(false)
@@ -840,6 +830,28 @@ const {
   getStatusBadgeClass
 } = deployment
 
+const profileManager = useTemplateProfiles({
+  templatesApi,
+  notify: (type, message) => mainStore.addNotification(type, message)
+})
+
+const {
+  profiles,
+  showProfilesModal,
+  showProfileEditModal,
+  editingProfile,
+  savingProfile,
+  profileModelFilter,
+  profileArchFilter,
+  profileVariablesJson,
+  matchingRouters,
+  loadProfiles,
+  newProfile,
+  editProfile,
+  saveProfile: persistProfile,
+  deleteProfile
+} = profileManager
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
@@ -896,15 +908,6 @@ async function loadRouters() {
     routers.value = response.routers || response.items || []
   } catch (error) {
     console.error('Failed to load routers:', error)
-  }
-}
-
-async function loadProfiles() {
-  try {
-    const response = await templatesApi.listProfiles()
-    profiles.value = response.items || []
-  } catch (error) {
-    console.error('Failed to load profiles:', error)
   }
 }
 
@@ -1109,108 +1112,8 @@ function formatDate(dateStr) {
   return date.toLocaleString()
 }
 
-// Profile methods
-function newProfile() {
-  editingProfile.value = {
-    name: '',
-    description: '',
-    device_filter: { model: [], architecture: [] },
-    template_ids: [],
-    variables: {},
-    is_active: true
-  }
-  profileModelFilter.value = ''
-  profileArchFilter.value = ''
-  profileVariablesJson.value = '{}'
-  matchingRouters.value = []
-  showProfileEditModal.value = true
-}
-
-function editProfile(profile) {
-  editingProfile.value = {
-    ...profile,
-    template_ids: profile.template_ids || []
-  }
-  profileModelFilter.value = (profile.device_filter?.model || []).join(', ')
-  profileArchFilter.value = (profile.device_filter?.architecture || []).join(', ')
-  profileVariablesJson.value = JSON.stringify(profile.variables || {}, null, 2)
-  loadMatchingRouters(profile.id)
-  showProfileEditModal.value = true
-}
-
-async function loadMatchingRouters(profileId) {
-  try {
-    const response = await templatesApi.getProfileRouters(profileId)
-    matchingRouters.value = response.routers || []
-  } catch (error) {
-    matchingRouters.value = []
-  }
-}
-
 async function saveProfile() {
-  if (!editingProfile.value.name) {
-    mainStore.addNotification('warning', 'Name is required')
-    return
-  }
-
-  // Parse filters
-  const modelPatterns = profileModelFilter.value
-    ? profileModelFilter.value.split(',').map(s => s.trim()).filter(s => s)
-    : []
-  const archPatterns = profileArchFilter.value
-    ? profileArchFilter.value.split(',').map(s => s.trim()).filter(s => s)
-    : []
-
-  // Parse variables JSON
-  let variables = {}
-  try {
-    if (profileVariablesJson.value.trim()) {
-      variables = JSON.parse(profileVariablesJson.value)
-    }
-  } catch (e) {
-    mainStore.addNotification('error', 'Invalid JSON in variables')
-    return
-  }
-
-  const profileData = {
-    name: editingProfile.value.name,
-    description: editingProfile.value.description,
-    device_filter: { model: modelPatterns, architecture: archPatterns },
-    template_ids: editingProfile.value.template_ids,
-    variables: variables,
-    is_active: editingProfile.value.is_active
-  }
-
-  savingProfile.value = true
-  try {
-    if (editingProfile.value.id) {
-      await templatesApi.updateProfile(editingProfile.value.id, profileData)
-    } else {
-      await templatesApi.createProfile(profileData)
-    }
-    await loadProfiles()
-    profileEditModal?.hide()
-    showProfileEditModal.value = false
-    mainStore.addNotification('success', 'Profile saved')
-  } catch (error) {
-    console.error('Failed to save profile:', error)
-    mainStore.addNotification('error', 'Failed to save profile: ' + error.message)
-  } finally {
-    savingProfile.value = false
-  }
-}
-
-async function deleteProfile(profile) {
-  if (!confirm(`Delete profile "${profile.name}"?`)) return
-
-  try {
-    await templatesApi.deleteProfile(profile.id)
-    await loadProfiles()
-    mainStore.addNotification('success', 'Profile deleted')
-  } catch (error) {
-    console.error('Failed to delete profile:', error)
-    mainStore.addNotification('error', 'Failed to delete profile')
-  }
+  await persistProfile(() => profileEditModal?.hide())
 }
 
 // Utilities
