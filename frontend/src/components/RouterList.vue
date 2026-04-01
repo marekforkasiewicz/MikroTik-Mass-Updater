@@ -272,6 +272,7 @@ import { useMainStore } from '../stores/main'
 import { scanApi, taskApi, routerApi } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 import UpgradeModal from './UpgradeModal.vue'
+import { useRouterOperations } from '../composables/useRouterOperations'
 
 const store = useMainStore()
 
@@ -420,199 +421,31 @@ const saveRouter = async () => {
   closeModal()
 }
 
-const getChannelBadgeClass = (channel) => {
-  if (!channel) return 'bg-secondary'
-  const ch = channel.toLowerCase()
-  if (ch.includes('stable')) return 'bg-success'
-  if (ch.includes('testing')) return 'bg-warning text-dark'
-  if (ch.includes('development')) return 'bg-info'
-  return 'bg-secondary'
-}
-
 const formatDate = (dateStr) => {
   if (!dateStr) return 'Never'
   const date = new Date(dateStr)
   return date.toLocaleString()
 }
 
-// Upgrade functions
-const upgradingFirmware = ref({})
-const upgradingRouterOS = ref({})
-
-// Channel change state
-const changingChannel = ref({})
-
-// Upgrade modal state
-const showUpgradeModal = ref(false)
-const upgradeModalRouter = ref(null)
-const upgradeModalTaskId = ref(null)
-const upgradeModalType = ref('firmware')
-
-const upgradeFirmware = async (router) => {
-  if (!router || !router.id) {
-    store.addNotification('error', 'Invalid router data')
-    return
-  }
-  if (!router.is_online) {
-    store.addNotification('error', `Router ${router.ip} is offline`)
-    return
-  }
-  if (!router.has_firmware_update) {
-    store.addNotification('warning', `Router ${router.ip} has no firmware update available`)
-    return
-  }
-
-  // Open upgrade modal
-  upgradeModalRouter.value = router
-  upgradeModalType.value = 'firmware'
-  showUpgradeModal.value = true
-
-  upgradingFirmware.value[router.id] = true
-  try {
-    const response = await taskApi.startUpdate({
-      router_ids: [router.id],
-      upgrade_firmware: true,
-      dry_run: false
-    })
-    // Set task ID to trigger WebSocket connection in modal
-    if (response && response.id) {
-      upgradeModalTaskId.value = response.id
-    } else {
-      throw new Error('Invalid response from server')
-    }
-  } catch (error) {
-    console.error('Firmware upgrade error:', error)
-    // Extract meaningful error message
-    let errorMsg = error.message || 'Unknown error'
-    if (error.response?.data?.detail) {
-      errorMsg = typeof error.response.data.detail === 'string'
-        ? error.response.data.detail
-        : JSON.stringify(error.response.data.detail)
-    }
-    store.addNotification('error', `Firmware upgrade failed: ${errorMsg}`)
-    showUpgradeModal.value = false
-    if (router?.id) {
-      upgradingFirmware.value[router.id] = false
-    }
-  }
-}
-
-const upgradeRouterOS = async (router) => {
-  if (!router || !router.id) {
-    store.addNotification('error', 'Invalid router data')
-    return
-  }
-  if (!router.is_online) {
-    store.addNotification('error', `Router ${router.ip} is offline`)
-    return
-  }
-  if (!router.has_updates) {
-    store.addNotification('warning', `Router ${router.ip} has no RouterOS update available`)
-    return
-  }
-
-  // Open upgrade modal
-  upgradeModalRouter.value = router
-  upgradeModalType.value = 'routeros'
-  showUpgradeModal.value = true
-
-  upgradingRouterOS.value[router.id] = true
-  try {
-    const response = await taskApi.startUpdate({
-      router_ids: [router.id],
-      upgrade_firmware: false,
-      dry_run: false
-    })
-    // Set task ID to trigger WebSocket connection in modal
-    if (response && response.id) {
-      upgradeModalTaskId.value = response.id
-    } else {
-      throw new Error('Invalid response from server')
-    }
-  } catch (error) {
-    console.error('RouterOS upgrade error:', error)
-    // Extract meaningful error message
-    let errorMsg = error.message || 'Unknown error'
-    if (error.response?.data?.detail) {
-      errorMsg = typeof error.response.data.detail === 'string'
-        ? error.response.data.detail
-        : JSON.stringify(error.response.data.detail)
-    }
-    store.addNotification('error', `RouterOS upgrade failed: ${errorMsg}`)
-    showUpgradeModal.value = false
-    if (router?.id) {
-      upgradingRouterOS.value[router.id] = false
-    }
-  }
-}
-
-const closeUpgradeModal = async () => {
-  showUpgradeModal.value = false
-  upgradeModalTaskId.value = null
-  // Reset upgrade state for the router
-  if (upgradeModalRouter.value) {
-    upgradingFirmware.value[upgradeModalRouter.value.id] = false
-    upgradingRouterOS.value[upgradeModalRouter.value.id] = false
-  }
-  upgradeModalRouter.value = null
-  // Always refresh router list when modal closes
-  await store.fetchRouters()
-}
-
-const onUpgradeComplete = async (data) => {
-  // Refresh router list after successful upgrade
-  await store.fetchRouters()
-  if (data?.success) {
-    store.addNotification('success', `Upgrade completed for ${data.router?.identity || data.router?.ip || 'router'}`)
-  }
-}
-
-// Channel change functions
-const getChannelSelectClass = (channel) => {
-  const classes = {
-    'stable': 'channel-stable',
-    'long-term': 'channel-longterm',
-    'testing': 'channel-testing',
-    'development': 'channel-development'
-  }
-  return classes[channel] || ''
-}
-
-const changeChannel = async (router, newChannel) => {
-  if (!router || !router.id || !newChannel) return
-  if (newChannel === router.update_channel) return
-
-  const routerId = router.id
-  changingChannel.value[routerId] = true
-
-  try {
-    const result = await routerApi.changeChannel(routerId, newChannel)
-
-    // Update the router in store using splice to ensure Vue reactivity
-    const idx = store.routers.findIndex(r => r.id === routerId)
-    if (idx !== -1) {
-      const updatedRouter = {
-        ...store.routers[idx],
-        update_channel: newChannel,
-        latest_version: result.latest_version,
-        has_updates: result.has_updates
-      }
-      store.routers.splice(idx, 1, updatedRouter)
-    }
-
-    // Show result with version info
-    const msg = result.has_updates
-      ? `Channel "${newChannel}" - update available: ${result.latest_version}`
-      : `Channel "${newChannel}" - up to date (${result.latest_version})`
-    store.addNotification('success', `${router.identity || router.ip}: ${msg}`)
-  } catch (error) {
-    store.addNotification('error', `Failed to change channel: ${error.message}`)
-    // Refresh to reset the select to original value
-    await store.fetchRouters()
-  } finally {
-    changingChannel.value[routerId] = false
-  }
-}
+const {
+  upgradingFirmware,
+  upgradingRouterOS,
+  changingChannel,
+  showUpgradeModal,
+  upgradeModalRouter,
+  upgradeModalTaskId,
+  upgradeModalType,
+  getChannelSelectClass,
+  upgradeFirmware,
+  upgradeRouterOS,
+  closeUpgradeModal,
+  onUpgradeComplete,
+  changeChannel
+} = useRouterOperations({
+  store,
+  taskApi,
+  routerApi
+})
 </script>
 
 <style scoped>
