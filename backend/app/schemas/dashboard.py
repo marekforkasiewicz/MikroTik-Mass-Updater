@@ -39,7 +39,7 @@ class HealthSummary(BaseModel):
 
 
 class RecentActivity(BaseModel):
-    id: int
+    id: str | int
     type: str  # scan, update, backup, script, alert
     title: str
     description: Optional[str] = None

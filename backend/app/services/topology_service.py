@@ -2,6 +2,7 @@
 
 import logging
 from typing import Optional, List, Dict, Any
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from ..models.router import Router
@@ -20,27 +21,41 @@ class TopologyService:
     def get_topology_map(self) -> Dict[str, Any]:
         """Get network topology data for visualization"""
         routers = self.db.query(Router).all()
+        router_ids = [router.id for router in routers]
+        latest_health_by_router: Dict[int, HealthCheck] = {}
+
+        if router_ids:
+            latest_health_subquery = self.db.query(
+                HealthCheck.router_id,
+                func.max(HealthCheck.checked_at).label("latest_checked_at")
+            ).filter(
+                HealthCheck.router_id.in_(router_ids)
+            ).group_by(HealthCheck.router_id).subquery()
+
+            latest_health_checks = self.db.query(HealthCheck).join(
+                latest_health_subquery,
+                (HealthCheck.router_id == latest_health_subquery.c.router_id) &
+                (HealthCheck.checked_at == latest_health_subquery.c.latest_checked_at)
+            ).all()
+            latest_health_by_router = {
+                health.router_id: health for health in latest_health_checks
+            }
 
         nodes = []
         edges = []
-        router_map = {}  # Map IP to router for edge creation
 
         # Find main router first
         main_router = self._find_main_router(routers)
         main_router_id = main_router.id if main_router else None
 
         for router in routers:
-            router_map[router.ip] = router
-
             # Determine node status/color
             status = "offline"
             color = "#dc3545"  # red
 
             if router.is_online:
                 # Check latest health
-                health = self.db.query(HealthCheck).filter(
-                    HealthCheck.router_id == router.id
-                ).order_by(HealthCheck.checked_at.desc()).first()
+                health = latest_health_by_router.get(router.id)
 
                 if health:
                     if health.status == "ok":

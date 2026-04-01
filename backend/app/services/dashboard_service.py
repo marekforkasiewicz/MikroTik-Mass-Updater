@@ -40,14 +40,24 @@ class DashboardService:
 
     def _get_router_stats(self) -> Dict[str, int]:
         """Get router statistics"""
-        routers = self.db.query(Router).all()
+        totals = self.db.query(
+            func.count(Router.id),
+            func.sum(func.case((Router.is_online == True, 1), else_=0)),
+            func.sum(func.case((Router.has_updates == True, 1), else_=0)),
+            func.sum(func.case((Router.has_firmware_update == True, 1), else_=0)),
+        ).one()
+
+        total = int(totals[0] or 0)
+        online = int(totals[1] or 0)
+        needs_update = int(totals[2] or 0)
+        firmware_update = int(totals[3] or 0)
 
         return {
-            "total": len(routers),
-            "online": sum(1 for r in routers if r.is_online),
-            "offline": sum(1 for r in routers if not r.is_online),
-            "needs_update": sum(1 for r in routers if r.has_updates),
-            "firmware_update": sum(1 for r in routers if r.has_firmware_update)
+            "total": total,
+            "online": online,
+            "offline": total - online,
+            "needs_update": needs_update,
+            "firmware_update": firmware_update,
         }
 
     def _get_version_distribution(self) -> List[Dict[str, Any]]:
@@ -140,14 +150,15 @@ class DashboardService:
         ).limit(limit).all()
 
         for task in tasks:
+            task_result = task.results or {}
             activities.append({
                 "id": task.id,
-                "type": task.task_type,
-                "title": f"{task.task_type.replace('_', ' ').title()}",
+                "type": task.type,
+                "title": f"{task.type.replace('_', ' ').title()}",
                 "description": f"Status: {task.status}",
                 "status": task.status,
                 "router_id": task.config.get("router_id") if task.config else None,
-                "router_identity": task.result.get("identity") if task.result else None,
+                "router_identity": task_result.get("identity"),
                 "user_id": None,
                 "username": None,
                 "created_at": task.created_at.isoformat()
@@ -157,9 +168,13 @@ class DashboardService:
         alerts = self.db.query(AlertHistory).order_by(
             AlertHistory.created_at.desc()
         ).limit(5).all()
+        router_ids = {alert.router_id for alert in alerts if alert.router_id is not None}
+        router_map = {
+            router.id: router.identity
+            for router in self.db.query(Router).filter(Router.id.in_(router_ids)).all()
+        }
 
         for alert in alerts:
-            router = self.db.query(Router).filter(Router.id == alert.router_id).first()
             activities.append({
                 "id": alert.id,
                 "type": "alert",
@@ -167,7 +182,7 @@ class DashboardService:
                 "description": alert.message,
                 "status": alert.status,
                 "router_id": alert.router_id,
-                "router_identity": router.identity if router else None,
+                "router_identity": router_map.get(alert.router_id),
                 "user_id": None,
                 "username": None,
                 "created_at": alert.created_at.isoformat()

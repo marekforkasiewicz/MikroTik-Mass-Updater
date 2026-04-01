@@ -27,6 +27,8 @@ venv/
 .venv/
 env/
 .env
+.env.*
+.pytest_cache/
 
 # IDE
 .idea/
@@ -47,3 +49,16 @@ playwright-report/
 # Test and debug scripts
 screenshot-service/
 test-*.py
+
+# Local agent and host notes
+.claude/
+.codex
+CLAUDE.md
+SYSTEM_INFO.md
+DOCKER_HOST_SERVICES.md
+P
+textarea|CNAME|record
+textarea\\|CNAME\\|record
+
+# Local backups outside tracked data dir
+backups/

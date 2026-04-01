@@ -70,7 +70,7 @@ async def create_bulk_backup(
     # Create a task for bulk backup
     task = Task(
         id=str(uuid.uuid4()),
-        task_type="backup",
+        type="backup",
         status="pending",
         config={
             "router_ids": request.router_ids,

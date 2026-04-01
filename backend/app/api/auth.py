@@ -3,7 +3,7 @@
 from typing import Annotated
 from datetime import timedelta
 
-from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie
+from fastapi import APIRouter, Depends, HTTPException, status, Response, Cookie, Request
 from fastapi.security import OAuth2PasswordRequestForm
 from sqlalchemy.orm import Session
 
@@ -14,6 +14,7 @@ from ..schemas.user import (
 )
 from ..services.auth_service import AuthService
 from ..core.deps import SessionUser
+from ..core.rate_limit import auth_rate_limiter
 from ..config import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -32,13 +33,62 @@ def _set_auth_cookie(response: Response, key: str, value: str, max_age: int) -> 
     )
 
 
+def _get_client_identifier(request: Request) -> str:
+    """Return a stable client identifier for auth rate limiting."""
+    forwarded_for = request.headers.get("x-forwarded-for", "")
+    if forwarded_for:
+        first_hop = forwarded_for.split(",")[0].strip()
+        if first_hop:
+            return first_hop
+    if request.client and request.client.host:
+        return request.client.host
+    return "unknown"
+
+
+def _apply_auth_rate_limit(
+    *,
+    request: Request,
+    response: Response,
+    action: str,
+    subject: str = "-",
+    limit: int,
+) -> None:
+    """Check and apply auth endpoint rate limits."""
+    client_id = _get_client_identifier(request)
+    key = f"{action}:{client_id}:{subject.strip().lower() or '-'}"
+    status_info = auth_rate_limiter.check(
+        key,
+        limit=limit,
+        window_seconds=settings.AUTH_RATE_LIMIT_WINDOW_SECONDS,
+    )
+
+    response.headers["X-RateLimit-Limit"] = str(limit)
+    response.headers["X-RateLimit-Remaining"] = str(status_info.remaining)
+    response.headers["X-RateLimit-Window"] = str(settings.AUTH_RATE_LIMIT_WINDOW_SECONDS)
+
+    if not status_info.allowed:
+        response.headers["Retry-After"] = str(status_info.retry_after_seconds)
+        raise HTTPException(
+            status_code=status.HTTP_429_TOO_MANY_REQUESTS,
+            detail="Too many authentication attempts. Try again later.",
+            headers={"Retry-After": str(status_info.retry_after_seconds)},
+        )
+
+
 @router.post("/login", response_model=LoginResponse)
 async def login(
+    request: Request,
     response: Response,
     form_data: Annotated[OAuth2PasswordRequestForm, Depends()],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Login with username and password"""
+    _apply_auth_rate_limit(
+        request=request,
+        response=response,
+        action="login",
+        limit=settings.AUTH_RATE_LIMIT_LOGIN_ATTEMPTS,
+    )
     auth_service = AuthService(db)
     result = auth_service.login(form_data.username, form_data.password)
 
@@ -68,11 +118,18 @@ async def login(
 
 @router.post("/login/json", response_model=LoginResponse)
 async def login_json(
+    request: Request,
     response: Response,
     login_data: LoginRequest,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Login with JSON body"""
+    _apply_auth_rate_limit(
+        request=request,
+        response=response,
+        action="login",
+        limit=settings.AUTH_RATE_LIMIT_LOGIN_ATTEMPTS,
+    )
     auth_service = AuthService(db)
     result = auth_service.login(login_data.username, login_data.password)
 
@@ -101,12 +158,20 @@ async def login_json(
 
 @router.post("/refresh", response_model=TokenResponse)
 async def refresh_token(
+    request: Request,
     response: Response,
     db: Annotated[Session, Depends(get_db)],
     refresh_token: Annotated[str, Cookie()] = None,
     body: RefreshRequest = None
 ):
     """Refresh access token"""
+    _apply_auth_rate_limit(
+        request=request,
+        response=response,
+        action="refresh",
+        limit=settings.AUTH_RATE_LIMIT_REFRESH_ATTEMPTS,
+    )
+
     token = refresh_token or (body.refresh_token if body else None)
 
     if not token:

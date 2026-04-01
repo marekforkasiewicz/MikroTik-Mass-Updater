@@ -133,7 +133,7 @@ class ExportService:
 
     def _get_update_data(self, filters: ReportFilter) -> Dict[str, Any]:
         """Get update history data"""
-        query = self.db.query(Task).filter(Task.task_type.in_(["update", "firmware_upgrade"]))
+        query = self.db.query(Task).filter(Task.type.in_(["update", "firmware_upgrade"]))
 
         if filters.date_from:
             query = query.filter(Task.created_at >= filters.date_from)
@@ -144,17 +144,17 @@ class ExportService:
 
         updates = []
         for task in tasks:
-            result = task.result or {}
+            result = task.results or {}
             updates.append({
                 "router_id": task.config.get("router_id") if task.config else None,
                 "router_identity": result.get("identity"),
                 "router_ip": result.get("ip"),
-                "update_type": task.task_type,
+                "update_type": task.type,
                 "from_version": result.get("from_version"),
                 "to_version": result.get("to_version"),
                 "status": task.status,
                 "started_at": task.created_at.isoformat(),
-                "completed_at": task.updated_at.isoformat() if task.updated_at else None,
+                "completed_at": task.completed_at.isoformat() if task.completed_at else None,
                 "error_message": result.get("error")
             })
 
@@ -248,13 +248,13 @@ class ExportService:
         for task in tasks:
             activities.append({
                 "id": task.id,
-                "type": task.task_type,
+                "type": task.type,
                 "status": task.status,
                 "progress": task.progress,
                 "created_at": task.created_at.isoformat(),
-                "updated_at": task.updated_at.isoformat() if task.updated_at else None,
+                "updated_at": task.completed_at.isoformat() if task.completed_at else None,
                 "config": task.config,
-                "result": task.result
+                "result": task.results
             })
 
         return {

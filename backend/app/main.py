@@ -6,6 +6,7 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.middleware.trustedhost import TrustedHostMiddleware
 from fastapi.staticfiles import StaticFiles
 from fastapi.responses import FileResponse, JSONResponse
 
@@ -27,6 +28,21 @@ logging.basicConfig(
     format="%(asctime)s - %(name)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def _get_cors_configuration() -> tuple[list[str], bool]:
+    """Derive safe CORS settings from configuration."""
+    allow_origins = settings.CORS_ORIGINS
+    has_wildcard = "*" in allow_origins
+    allow_credentials = not has_wildcard
+
+    if has_wildcard:
+        logger.warning(
+            "CORS_ORIGINS contains '*'; disabling cross-origin credentials. "
+            "Configure explicit origins to allow cookie-based cross-origin auth."
+        )
+
+    return allow_origins, allow_credentials
 
 
 @asynccontextmanager
@@ -111,13 +127,18 @@ app = FastAPI(
 )
 
 # Configure CORS
+cors_origins, cors_allow_credentials = _get_cors_configuration()
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=settings.CORS_ORIGINS,
-    allow_credentials=True,
+    allow_origins=cors_origins,
+    allow_credentials=cors_allow_credentials,
     allow_methods=["*"],
     allow_headers=["*"],
 )
+
+# Restrict accepted Host headers when configured explicitly.
+if settings.TRUSTED_HOSTS and "*" not in settings.TRUSTED_HOSTS:
+    app.add_middleware(TrustedHostMiddleware, allowed_hosts=settings.TRUSTED_HOSTS)
 
 # Include API routers - Original
 app.include_router(routers_router, prefix=settings.API_PREFIX)

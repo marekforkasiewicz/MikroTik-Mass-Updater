@@ -50,6 +50,12 @@ class Settings(BaseSettings):
 
     # CORS
     CORS_ORIGINS: List[str] = ["*"]
+    TRUSTED_HOSTS: List[str] = ["*"]
+
+    # Auth rate limiting
+    AUTH_RATE_LIMIT_WINDOW_SECONDS: int = 300
+    AUTH_RATE_LIMIT_LOGIN_ATTEMPTS: int = 5
+    AUTH_RATE_LIMIT_REFRESH_ATTEMPTS: int = 10
 
     # JWT Authentication
     SECRET_KEY: str = _get_persistent_secret_key()
