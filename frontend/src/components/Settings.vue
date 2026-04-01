@@ -32,7 +32,7 @@
       <div class="card mb-4">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">Notification Channels</h5>
-          <button class="btn btn-primary btn-sm" @click="showChannelModal = true">
+          <button class="btn btn-primary btn-sm" @click="openChannelEditor()">
             <i class="bi bi-plus-lg me-1"></i> Add Channel
           </button>
         </div>
@@ -55,7 +55,7 @@
                     <button class="btn btn-sm btn-outline-primary" @click="testChannel(channel)">
                       <i class="bi bi-send me-1"></i>Test
                     </button>
-                    <button class="btn btn-sm btn-outline-secondary" @click="editChannel(channel)">
+                    <button class="btn btn-sm btn-outline-secondary" @click="openChannelEditor(channel)">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-danger" @click="deleteChannel(channel)">
@@ -76,7 +76,7 @@
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">Notification Rules</h5>
-          <button class="btn btn-primary btn-sm" @click="showRuleModal = true" :disabled="channels.length === 0">
+          <button class="btn btn-primary btn-sm" @click="openRuleEditor()" :disabled="channels.length === 0">
             <i class="bi bi-plus-lg me-1"></i> Add Rule
           </button>
         </div>
@@ -104,7 +104,7 @@
                     <i :class="rule.enabled ? 'bi bi-check-circle text-success' : 'bi bi-circle text-secondary'"></i>
                   </td>
                   <td>
-                    <button class="btn btn-sm btn-outline-secondary me-1" @click="editRule(rule)">
+                    <button class="btn btn-sm btn-outline-secondary me-1" @click="openRuleEditor(rule)">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-sm btn-outline-danger" @click="deleteRule(rule)">
@@ -459,6 +459,7 @@ import { webhooksApi, usersApi, notificationsApi } from '../services/api'
 import { formatDate, truncate } from '../utils/formatters'
 import { getRoleBadgeClass } from '../utils/badges'
 import ConfirmModal from './ConfirmModal.vue'
+import { useSettingsNotifications } from '../composables/useSettingsNotifications'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
@@ -471,17 +472,6 @@ const saving = ref(false)
 // Computed
 const isAdmin = computed(() => authStore.isAdmin)
 const currentUser = computed(() => authStore.user)
-const channels = computed(() => notificationsStore.channels)
-const rules = computed(() => notificationsStore.rules)
-
-// Notifications
-const eventTypes = ref([])
-const showChannelModal = ref(false)
-const showRuleModal = ref(false)
-const editingChannel = ref(null)
-const editingRule = ref(null)
-const channelForm = ref({ name: '', channel_type: 'email', config: {}, enabled: true })
-const ruleForm = ref({ name: '', channel_id: null, event_types: [], enabled: true })
 
 // Webhooks
 const webhooks = ref([])
@@ -514,6 +504,34 @@ let ruleModal = null
 let webhookModal = null
 let userModal = null
 
+const notificationsManager = useSettingsNotifications({
+  notificationsStore,
+  notificationsApi,
+  mainStore
+})
+
+const {
+  channels,
+  rules,
+  eventTypes,
+  showChannelModal,
+  showRuleModal,
+  editingChannel,
+  editingRule,
+  channelForm,
+  ruleForm,
+  loadEventTypes,
+  getChannelIcon,
+  getChannelName,
+  resetChannelForm,
+  editChannel,
+  saveChannel: persistChannel,
+  testChannel: runChannelTest,
+  resetRuleForm,
+  editRule,
+  saveRule: persistRule
+} = notificationsManager
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
@@ -537,14 +555,6 @@ watch(showRuleModal, (val) => { if (val) { resetRuleForm(); ruleModal?.show() } 
 watch(showWebhookModal, (val) => { if (val) { resetWebhookForm(); webhookModal?.show() } })
 watch(showUserModal, (val) => { if (val) { resetUserForm(); userModal?.show() } })
 
-// Load functions
-async function loadEventTypes() {
-  try {
-    const response = await notificationsApi.getEventTypes()
-    eventTypes.value = response?.event_types || []
-  } catch (error) { console.error('Failed to load event types:', error) }
-}
-
 async function loadWebhooks() {
   try {
     const [webhooksRes, eventsRes] = await Promise.all([webhooksApi.list(), webhooksApi.getEvents()])
@@ -562,27 +572,24 @@ async function loadUsers() {
 }
 
 // Helpers
-function getChannelIcon(type) {
-  const icons = { email: 'bi bi-envelope', slack: 'bi bi-slack', telegram: 'bi bi-telegram', discord: 'bi bi-discord', webhook: 'bi bi-link-45deg' }
-  return icons[type] || 'bi bi-bell'
-}
-
-function getChannelName(id) {
-  return channels.value.find(c => c.id === id)?.name || 'Unknown'
-}
-
 function getRoleBadge(role) {
   const badges = { admin: 'badge bg-danger', operator: 'badge bg-primary', viewer: 'badge bg-secondary' }
   return badges[role] || 'badge bg-secondary'
 }
 
 // Channel methods
-function editChannel(channel) { editingChannel.value = channel; channelForm.value = { ...channel, config: { ...channel.config } }; channelModal?.show() }
+function openChannelEditor(channel = null) {
+  if (channel) {
+    editChannel(channel, () => channelModal?.show())
+    return
+  }
+  showChannelModal.value = true
+}
+
 async function saveChannel() {
   saving.value = true
   try {
-    if (editingChannel.value?.id) await notificationsStore.updateChannel(editingChannel.value.id, channelForm.value)
-    else await notificationsStore.createChannel(channelForm.value)
+    await persistChannel()
     channelModal?.hide()
   } finally { saving.value = false }
 }
@@ -594,20 +601,22 @@ function deleteChannel(channel) {
   showConfirm.value = true
 }
 async function testChannel(channel) {
-  try {
-    const result = await notificationsStore.testChannel(channel.id, 'Test notification')
-    mainStore.addNotification(result.success ? 'success' : 'error', result.success ? 'Test sent!' : `Test failed: ${result.error}`)
-  } catch (error) { mainStore.addNotification('error', 'Test failed: ' + error.message) }
+  await runChannelTest(channel)
 }
-function resetChannelForm() { editingChannel.value = null; channelForm.value = { name: '', channel_type: 'email', config: {}, enabled: true } }
 
 // Rule methods
-function editRule(rule) { editingRule.value = rule; ruleForm.value = { ...rule }; ruleModal?.show() }
+function openRuleEditor(rule = null) {
+  if (rule) {
+    editRule(rule, () => ruleModal?.show())
+    return
+  }
+  showRuleModal.value = true
+}
+
 async function saveRule() {
   saving.value = true
   try {
-    if (editingRule.value?.id) await notificationsStore.updateRule(editingRule.value.id, ruleForm.value)
-    else await notificationsStore.createRule(ruleForm.value)
+    await persistRule()
     ruleModal?.hide()
   } finally { saving.value = false }
 }
@@ -618,7 +627,6 @@ function deleteRule(rule) {
   pendingAction.value = () => notificationsStore.deleteRule(rule.id)
   showConfirm.value = true
 }
-function resetRuleForm() { editingRule.value = null; ruleForm.value = { name: '', channel_id: channels.value[0]?.id, event_types: [], enabled: true } }
 
 // Webhook methods
 function editWebhook(webhook) { editingWebhook.value = webhook; webhookForm.value = { ...webhook }; webhookModal?.show() }
