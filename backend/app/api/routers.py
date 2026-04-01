@@ -317,7 +317,10 @@ def change_update_channel(
 
 
 @router.post("/import-file")
-def import_routers_from_file(db: Session = Depends(get_db)):
+def import_routers_from_file(
+    current_user: OperatorUser,
+    db: Session = Depends(get_db)
+):
     """Import routers from the default list.txt file"""
     import os
     from ..config import settings

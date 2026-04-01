@@ -4,6 +4,7 @@ from sqlalchemy import create_engine
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.orm import sessionmaker
 from .config import settings
+from .core.security import encrypt_router_password, is_encrypted_router_password
 
 # Create database engine
 engine = create_engine(
@@ -40,3 +41,20 @@ def init_db():
             conn.commit()
         except Exception:
             pass  # Column already exists
+
+    # Encrypt legacy plaintext router passwords in place.
+    from .models.router import Router
+
+    db = SessionLocal()
+    try:
+        routers = db.query(Router).all()
+        changed = False
+        for router in routers:
+            stored_password = router._password
+            if stored_password and not is_encrypted_router_password(stored_password):
+                router._password = encrypt_router_password(stored_password)
+                changed = True
+        if changed:
+            db.commit()
+    finally:
+        db.close()

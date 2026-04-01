@@ -7,6 +7,7 @@ from typing import Dict, Optional
 
 import httpx
 from fastapi import APIRouter, HTTPException
+from ..core.deps import CurrentUser, OperatorUser
 
 logger = logging.getLogger(__name__)
 
@@ -116,7 +117,7 @@ async def fetch_all_versions() -> Dict:
 
 
 @router.get("")
-async def get_routeros_versions():
+async def get_routeros_versions(current_user: CurrentUser):
     """Get current RouterOS versions for all channels from MikroTik"""
     try:
         return await fetch_all_versions()
@@ -126,7 +127,7 @@ async def get_routeros_versions():
 
 
 @router.get("/refresh")
-async def refresh_versions():
+async def refresh_versions(current_user: OperatorUser):
     """Force refresh versions cache"""
     global _versions_cache, _cache_time
     _versions_cache = None
