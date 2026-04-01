@@ -443,15 +443,14 @@
       :message="confirmMessage"
       :variant="confirmVariant"
       :loading="confirmLoading"
-      @confirm="handleConfirm"
-      @cancel="showConfirm = false"
+      @confirm="confirmPendingAction"
+      @cancel="handleCancel"
     />
   </div>
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Modal } from 'bootstrap'
+import { ref, onMounted, watch } from 'vue'
 import { useAuthStore } from '../stores/auth'
 import { useNotificationsStore } from '../stores/notifications'
 import { useMainStore } from '../stores/main'
@@ -462,21 +461,26 @@ import ConfirmModal from './ConfirmModal.vue'
 import { useSettingsNotifications } from '../composables/useSettingsNotifications'
 import { useSettingsWebhooks } from '../composables/useSettingsWebhooks'
 import { useSettingsUsers } from '../composables/useSettingsUsers'
+import { useModalManager } from '../composables/useModalManager'
+import { useConfirmation } from '../composables/useConfirmation'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
 const mainStore = useMainStore()
+const { registerModal, showModal, hideModal } = useModalManager()
+const {
+  showConfirm,
+  confirmTitle,
+  confirmMessage,
+  confirmVariant,
+  confirmLoading,
+  handleConfirm,
+  handleCancel
+} = useConfirmation()
 
 // State
 const activeTab = ref('notifications')
 const saving = ref(false)
-
-// Confirmation
-const showConfirm = ref(false)
-const confirmTitle = ref('')
-const confirmMessage = ref('')
-const confirmVariant = ref('danger')
-const confirmLoading = ref(false)
 const pendingAction = ref(null)
 
 // Modals
@@ -484,10 +488,6 @@ const channelModalEl = ref(null)
 const ruleModalEl = ref(null)
 const webhookModalEl = ref(null)
 const userModalEl = ref(null)
-let channelModal = null
-let ruleModal = null
-let webhookModal = null
-let userModal = null
 
 const notificationsManager = useSettingsNotifications({
   notificationsStore,
@@ -557,6 +557,11 @@ const {
 
 // Lifecycle
 onMounted(async () => {
+  registerModal('channel', channelModalEl)
+  registerModal('rule', ruleModalEl)
+  registerModal('webhook', webhookModalEl)
+  registerModal('user', userModalEl)
+
   await Promise.all([
     notificationsStore.fetchChannels(),
     notificationsStore.fetchRules(),
@@ -564,24 +569,17 @@ onMounted(async () => {
     loadWebhooks(),
     loadUsers()
   ])
-
-  nextTick(() => {
-    if (channelModalEl.value) channelModal = new Modal(channelModalEl.value)
-    if (ruleModalEl.value) ruleModal = new Modal(ruleModalEl.value)
-    if (webhookModalEl.value) webhookModal = new Modal(webhookModalEl.value)
-    if (userModalEl.value) userModal = new Modal(userModalEl.value)
-  })
 })
 
-watch(showChannelModal, (val) => { if (val) { resetChannelForm(); channelModal?.show() } })
-watch(showRuleModal, (val) => { if (val) { resetRuleForm(); ruleModal?.show() } })
-watch(showWebhookModal, (val) => { if (val) { resetWebhookForm(); webhookModal?.show() } })
-watch(showUserModal, (val) => { if (val) { resetUserForm(); userModal?.show() } })
+watch(showChannelModal, (val) => { if (val) { resetChannelForm(); showModal('channel') } })
+watch(showRuleModal, (val) => { if (val) { resetRuleForm(); showModal('rule') } })
+watch(showWebhookModal, (val) => { if (val) { resetWebhookForm(); showModal('webhook') } })
+watch(showUserModal, (val) => { if (val) { resetUserForm(); showModal('user') } })
 
 // Channel methods
 function openChannelEditor(channel = null) {
   if (channel) {
-    editChannel(channel, () => channelModal?.show())
+    editChannel(channel, () => showModal('channel'))
     return
   }
   showChannelModal.value = true
@@ -591,7 +589,7 @@ async function saveChannel() {
   saving.value = true
   try {
     await persistChannel()
-    channelModal?.hide()
+    hideModal('channel')
   } finally { saving.value = false }
 }
 function deleteChannel(channel) {
@@ -608,7 +606,7 @@ async function testChannel(channel) {
 // Rule methods
 function openRuleEditor(rule = null) {
   if (rule) {
-    editRule(rule, () => ruleModal?.show())
+    editRule(rule, () => showModal('rule'))
     return
   }
   showRuleModal.value = true
@@ -618,7 +616,7 @@ async function saveRule() {
   saving.value = true
   try {
     await persistRule()
-    ruleModal?.hide()
+    hideModal('rule')
   } finally { saving.value = false }
 }
 function deleteRule(rule) {
@@ -632,7 +630,7 @@ function deleteRule(rule) {
 // Webhook methods
 function openWebhookEditor(webhook = null) {
   if (webhook) {
-    editWebhook(webhook, () => webhookModal?.show())
+    editWebhook(webhook, () => showModal('webhook'))
     return
   }
   showWebhookModal.value = true
@@ -642,7 +640,7 @@ async function saveWebhook() {
   saving.value = true
   try {
     await persistWebhook()
-    webhookModal?.hide()
+    hideModal('webhook')
   } finally { saving.value = false }
 }
 function deleteWebhookConfirm(webhook) {
@@ -659,7 +657,7 @@ async function testWebhook(webhook) {
 // User methods
 function openUserEditor(user = null) {
   if (user) {
-    editUser(user, () => userModal?.show())
+    editUser(user, () => showModal('user'))
     return
   }
   showUserModal.value = true
@@ -669,7 +667,7 @@ async function saveUser() {
   saving.value = true
   try {
     await persistUser()
-    userModal?.hide()
+    hideModal('user')
   } catch (error) { mainStore.addNotification('error', 'Failed to save user: ' + error.message) }
   finally { saving.value = false }
 }
@@ -682,11 +680,12 @@ function deleteUserConfirm(user) {
 }
 
 // Confirmation handler
-async function handleConfirm() {
+async function confirmPendingAction() {
   if (!pendingAction.value) return
-  confirmLoading.value = true
-  try { await pendingAction.value() }
-  finally { confirmLoading.value = false; showConfirm.value = false; pendingAction.value = null }
+  await handleConfirm(async () => {
+    await pendingAction.value()
+    pendingAction.value = null
+  })
 }
 </script>
 

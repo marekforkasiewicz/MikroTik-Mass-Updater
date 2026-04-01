@@ -374,8 +374,8 @@
       :message="confirmMessage"
       :variant="confirmVariant"
       :loading="confirmLoading"
-      @confirm="handleConfirm"
-      @cancel="showConfirm = false"
+      @confirm="confirmPendingAction"
+      @cancel="handleCancel"
     />
   </div>
 </template>
@@ -393,21 +393,24 @@ import { useAutomationSchedules } from '../composables/useAutomationSchedules'
 import { useAutomationBackups } from '../composables/useAutomationBackups'
 import { useAutomationTasks } from '../composables/useAutomationTasks'
 import { useModalManager } from '../composables/useModalManager'
+import { useConfirmation } from '../composables/useConfirmation'
 
 const store = useMainStore()
 const schedulesStore = useSchedulesStore()
 const { registerModal, showModal, hideModal } = useModalManager()
+const {
+  showConfirm,
+  confirmTitle,
+  confirmMessage,
+  confirmVariant,
+  confirmLoading,
+  handleConfirm,
+  handleCancel
+} = useConfirmation()
 
 // State
 const activeTab = ref('schedules')
 const saving = ref(false)
-
-// Confirmation
-const showConfirm = ref(false)
-const confirmTitle = ref('')
-const confirmMessage = ref('')
-const confirmVariant = ref('danger')
-const confirmLoading = ref(false)
 const pendingAction = ref(null)
 
 // Modals
@@ -560,16 +563,12 @@ function deleteTask(task) {
 }
 
 // Confirmation handler
-async function handleConfirm() {
+async function confirmPendingAction() {
   if (!pendingAction.value) return
-  confirmLoading.value = true
-  try {
+  await handleConfirm(async () => {
     await pendingAction.value()
-  } finally {
-    confirmLoading.value = false
-    showConfirm.value = false
     pendingAction.value = null
-  }
+  })
 }
 </script>
 
