@@ -7,7 +7,7 @@
           <i class="bi bi-arrow-clockwise" :class="{ 'spin': loading }"></i>
           Refresh
         </button>
-        <button class="btn btn-primary" @click="showAddModal = true">
+        <button class="btn btn-primary" @click="openAddModal()">
           <i class="bi bi-plus-lg me-1"></i>
           Add Router
         </button>
@@ -273,68 +273,12 @@ import { scanApi, taskApi, routerApi } from '../services/api'
 import ConfirmModal from './ConfirmModal.vue'
 import UpgradeModal from './UpgradeModal.vue'
 import { useRouterOperations } from '../composables/useRouterOperations'
+import { useRouterCrud } from '../composables/useRouterCrud'
+import { useRouterListFilters } from '../composables/useRouterListFilters'
 
 const store = useMainStore()
 
 const loading = ref(false)
-const searchQuery = ref('')
-const statusFilter = ref('')
-const showAddModal = ref(false)
-const showEditModal = ref(false)
-const editingRouter = ref(null)
-
-const formData = ref({
-  ip: '',
-  port: 8728,
-  username: '',
-  password: ''
-})
-
-// Delete confirmation state
-const showDeleteConfirm = ref(false)
-const deleteConfirmMessage = ref('')
-const deleteTarget = ref(null)
-const deleteMode = ref('single') // 'single' or 'multiple'
-const deleting = ref(false)
-
-const filteredRouters = computed(() => {
-  let routers = store.routers
-
-  if (searchQuery.value) {
-    const query = searchQuery.value.toLowerCase()
-    routers = routers.filter(r =>
-      r.ip.toLowerCase().includes(query) ||
-      (r.identity && r.identity.toLowerCase().includes(query))
-    )
-  }
-
-  if (statusFilter.value === 'online') {
-    routers = routers.filter(r => r.is_online)
-  } else if (statusFilter.value === 'offline') {
-    routers = routers.filter(r => !r.is_online)
-  } else if (statusFilter.value === 'updates') {
-    routers = routers.filter(r => r.has_updates)
-  }
-
-  return routers
-})
-
-const allSelected = computed(() => {
-  return filteredRouters.value.length > 0 &&
-         filteredRouters.value.every(r => store.selectedRouterIds.includes(r.id))
-})
-
-const toggleSelectAll = () => {
-  if (allSelected.value) {
-    store.clearSelection()
-  } else {
-    filteredRouters.value.forEach(r => {
-      if (!store.selectedRouterIds.includes(r.id)) {
-        store.toggleRouterSelection(r.id)
-      }
-    })
-  }
-}
 
 const refreshRouters = async () => {
   loading.value = true
@@ -348,83 +292,48 @@ const refreshRouters = async () => {
   }
 }
 
-const scanRouter = async (router) => {
-  try {
-    await scanApi.quickScanSingle(router.id)
-    await store.fetchRouters()
-    store.addNotification('success', `Scan completed for ${router.ip}`)
-  } catch (error) {
-    store.addNotification('error', `Scan failed: ${error.message}`)
-  }
-}
-
-const scanSelected = async () => {
-  await store.startQuickScan(store.selectedRouterIds)
-}
-
-const editRouter = (router) => {
-  editingRouter.value = router
-  formData.value = {
-    ip: router.ip,
-    port: router.port,
-    username: router.username || '',
-    password: ''
-  }
-  showEditModal.value = true
-}
-
-const deleteRouter = (router) => {
-  deleteTarget.value = router
-  deleteMode.value = 'single'
-  deleteConfirmMessage.value = `Are you sure you want to delete router ${router.ip}? This action cannot be undone.`
-  showDeleteConfirm.value = true
-}
-
-const deleteSelected = () => {
-  deleteTarget.value = null
-  deleteMode.value = 'multiple'
-  deleteConfirmMessage.value = `Are you sure you want to delete ${store.selectedRouterIds.length} routers? This action cannot be undone.`
-  showDeleteConfirm.value = true
-}
-
-const confirmDeleteAction = async () => {
-  deleting.value = true
-  try {
-    if (deleteMode.value === 'single' && deleteTarget.value) {
-      await store.deleteRouter(deleteTarget.value.id)
-    } else {
-      for (const id of store.selectedRouterIds) {
-        await store.deleteRouter(id)
-      }
-      store.clearSelection()
-    }
-  } finally {
-    deleting.value = false
-    showDeleteConfirm.value = false
-    deleteTarget.value = null
-  }
-}
-
-const closeModal = () => {
-  showAddModal.value = false
-  showEditModal.value = false
-  editingRouter.value = null
-  formData.value = { ip: '', port: 8728, username: '', password: '' }
-}
-
-const saveRouter = async () => {
-  if (showEditModal.value) {
-    await store.updateRouter(editingRouter.value.id, formData.value)
-  } else {
-    await store.createRouter(formData.value)
-  }
-  closeModal()
-}
-
 const formatDate = (dateStr) => {
   if (!dateStr) return 'Never'
   const date = new Date(dateStr)
   return date.toLocaleString()
+}
+
+const {
+  searchQuery,
+  statusFilter,
+  filteredRouters,
+  allSelected,
+  toggleSelectAll,
+  scanRouter,
+  scanSelected
+} = useRouterListFilters({
+  store,
+  scanApi
+})
+
+const {
+  showAddModal,
+  showEditModal,
+  editingRouter,
+  formData,
+  showDeleteConfirm,
+  deleteConfirmMessage,
+  deleting,
+  openAddModal,
+  editRouter,
+  promptDeleteRouter,
+  promptDeleteSelected,
+  confirmDeleteAction,
+  closeModal,
+  saveRouter
+} = useRouterCrud({ store })
+
+const deleteRouter = (router) => {
+  promptDeleteRouter(router)
+}
+
+const deleteSelected = () => {
+  promptDeleteSelected(store.selectedRouterIds.length)
 }
 
 const {
