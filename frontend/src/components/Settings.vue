@@ -127,7 +127,7 @@
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">Webhooks</h5>
-          <button class="btn btn-primary btn-sm" @click="showWebhookModal = true">
+          <button class="btn btn-primary btn-sm" @click="openWebhookEditor()">
             <i class="bi bi-plus-lg me-1"></i> Add Webhook
           </button>
         </div>
@@ -169,7 +169,7 @@
                       <button class="btn btn-outline-primary" @click="testWebhook(webhook)" title="Test">
                         <i class="bi bi-send"></i>
                       </button>
-                      <button class="btn btn-outline-secondary" @click="editWebhook(webhook)" title="Edit">
+                      <button class="btn btn-outline-secondary" @click="openWebhookEditor(webhook)" title="Edit">
                         <i class="bi bi-pencil"></i>
                       </button>
                       <button class="btn btn-outline-danger" @click="deleteWebhookConfirm(webhook)" title="Delete">
@@ -460,6 +460,7 @@ import { formatDate, truncate } from '../utils/formatters'
 import { getRoleBadgeClass } from '../utils/badges'
 import ConfirmModal from './ConfirmModal.vue'
 import { useSettingsNotifications } from '../composables/useSettingsNotifications'
+import { useSettingsWebhooks } from '../composables/useSettingsWebhooks'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
@@ -472,13 +473,6 @@ const saving = ref(false)
 // Computed
 const isAdmin = computed(() => authStore.isAdmin)
 const currentUser = computed(() => authStore.user)
-
-// Webhooks
-const webhooks = ref([])
-const availableEvents = ref([])
-const showWebhookModal = ref(false)
-const editingWebhook = ref(null)
-const webhookForm = ref({ name: '', url: '', method: 'POST', events: [], enabled: true })
 
 // Users
 const users = ref([])
@@ -532,6 +526,24 @@ const {
   saveRule: persistRule
 } = notificationsManager
 
+const webhooksManager = useSettingsWebhooks({
+  webhooksApi,
+  mainStore
+})
+
+const {
+  webhooks,
+  availableEvents,
+  showWebhookModal,
+  editingWebhook,
+  webhookForm,
+  loadWebhooks,
+  resetWebhookForm,
+  editWebhook,
+  saveWebhook: persistWebhook,
+  testWebhook: runWebhookTest
+} = webhooksManager
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
@@ -554,14 +566,6 @@ watch(showChannelModal, (val) => { if (val) { resetChannelForm(); channelModal?.
 watch(showRuleModal, (val) => { if (val) { resetRuleForm(); ruleModal?.show() } })
 watch(showWebhookModal, (val) => { if (val) { resetWebhookForm(); webhookModal?.show() } })
 watch(showUserModal, (val) => { if (val) { resetUserForm(); userModal?.show() } })
-
-async function loadWebhooks() {
-  try {
-    const [webhooksRes, eventsRes] = await Promise.all([webhooksApi.list(), webhooksApi.getEvents()])
-    webhooks.value = webhooksRes.items || []
-    availableEvents.value = eventsRes.events || []
-  } catch (error) { console.error('Failed to load webhooks:', error) }
-}
 
 async function loadUsers() {
   if (!isAdmin.value) return
@@ -629,14 +633,19 @@ function deleteRule(rule) {
 }
 
 // Webhook methods
-function editWebhook(webhook) { editingWebhook.value = webhook; webhookForm.value = { ...webhook }; webhookModal?.show() }
+function openWebhookEditor(webhook = null) {
+  if (webhook) {
+    editWebhook(webhook, () => webhookModal?.show())
+    return
+  }
+  showWebhookModal.value = true
+}
+
 async function saveWebhook() {
   saving.value = true
   try {
-    if (editingWebhook.value?.id) await webhooksApi.update(editingWebhook.value.id, webhookForm.value)
-    else await webhooksApi.create(webhookForm.value)
+    await persistWebhook()
     webhookModal?.hide()
-    await loadWebhooks()
   } finally { saving.value = false }
 }
 function deleteWebhookConfirm(webhook) {
@@ -647,12 +656,8 @@ function deleteWebhookConfirm(webhook) {
   showConfirm.value = true
 }
 async function testWebhook(webhook) {
-  try {
-    const result = await webhooksApi.test(webhook.id, { event_type: 'test', data: { message: 'Test' } })
-    mainStore.addNotification(result.success ? 'success' : 'error', result.success ? 'Test successful!' : `Test failed: ${result.error}`)
-  } catch (error) { mainStore.addNotification('error', 'Test failed: ' + error.message) }
+  await runWebhookTest(webhook)
 }
-function resetWebhookForm() { editingWebhook.value = null; webhookForm.value = { name: '', url: '', method: 'POST', events: [], enabled: true } }
 
 // User methods
 function editUser(user) { editingUser.value = user; userForm.value = { ...user, password: '' }; userModal?.show() }
