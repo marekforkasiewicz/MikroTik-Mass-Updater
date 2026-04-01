@@ -85,7 +85,7 @@
                             :title="schedule.enabled ? 'Disable' : 'Enable'">
                       <i :class="schedule.enabled ? 'bi bi-pause' : 'bi bi-play-circle'"></i>
                     </button>
-                    <button class="btn btn-outline-secondary" @click="editSchedule(schedule)" title="Edit">
+                    <button class="btn btn-outline-secondary" @click="openScheduleEditor(schedule)" title="Edit">
                       <i class="bi bi-pencil"></i>
                     </button>
                     <button class="btn btn-outline-danger" @click="deleteSchedule(schedule)" title="Delete">
@@ -390,7 +390,7 @@ import { formatDate, formatSize, formatDuration } from '../utils/formatters'
 import { getStatusBadgeClass, getBackupTypeBadge } from '../utils/badges'
 import ConfirmModal from './ConfirmModal.vue'
 import ResultsSummary from './shared/ResultsSummary.vue'
-import cronstrue from 'cronstrue'
+import { useAutomationSchedules } from '../composables/useAutomationSchedules'
 
 const store = useMainStore()
 const schedulesStore = useSchedulesStore()
@@ -399,17 +399,6 @@ const schedulesStore = useSchedulesStore()
 const activeTab = ref('schedules')
 const saving = ref(false)
 const loadingTasks = ref(false)
-
-// Schedules
-const schedules = computed(() => schedulesStore.schedules)
-const showScheduleModal = ref(false)
-const editingSchedule = ref(null)
-const scheduleForm = ref({
-  name: '',
-  task_type: 'scan',
-  cron_expression: '0 2 * * *',
-  enabled: true
-})
 
 // Backups
 const backups = ref([])
@@ -438,6 +427,20 @@ const backupModalEl = ref(null)
 let scheduleModal = null
 let backupModal = null
 
+const schedulesManager = useAutomationSchedules({ schedulesStore })
+
+const {
+  schedules,
+  showScheduleModal,
+  editingSchedule,
+  scheduleForm,
+  getCronDescription,
+  resetScheduleForm,
+  editSchedule,
+  saveSchedule: persistSchedule,
+  toggleSchedule
+} = schedulesManager
+
 // Computed
 const filteredBackups = computed(() => {
   let result = backups.value
@@ -464,10 +467,8 @@ onMounted(async () => {
 watch(showScheduleModal, (val) => { if (val) { resetScheduleForm(); scheduleModal?.show() } })
 watch(showBackupModal, (val) => { if (val) { resetBackupForm(); backupModal?.show() } })
 
-// Methods
-function getCronDescription(cron) {
-  if (!cron) return ''
-  try { return cronstrue.toString(cron) } catch { return 'Invalid cron expression' }
+function openScheduleEditor(schedule) {
+  editSchedule(schedule, () => scheduleModal?.show())
 }
 
 async function loadBackups() {
@@ -488,30 +489,14 @@ async function loadRouters() {
   }
 }
 
-// Schedule methods
-function editSchedule(schedule) {
-  editingSchedule.value = schedule
-  scheduleForm.value = { ...schedule }
-  scheduleModal?.show()
-}
-
 async function saveSchedule() {
   saving.value = true
   try {
-    if (editingSchedule.value) {
-      await schedulesStore.updateSchedule(editingSchedule.value.id, scheduleForm.value)
-    } else {
-      await schedulesStore.createSchedule(scheduleForm.value)
-    }
+    await persistSchedule()
     scheduleModal?.hide()
   } finally {
     saving.value = false
   }
-}
-
-function toggleSchedule(schedule) {
-  if (schedule.enabled) schedulesStore.disableSchedule(schedule.id)
-  else schedulesStore.enableSchedule(schedule.id)
 }
 
 function runScheduleNow(schedule) {
@@ -530,10 +515,6 @@ function deleteSchedule(schedule) {
   showConfirm.value = true
 }
 
-function resetScheduleForm() {
-  editingSchedule.value = null
-  scheduleForm.value = { name: '', task_type: 'scan', cron_expression: '0 2 * * *', enabled: true }
-}
 
 // Backup methods
 async function createBackup() {
