@@ -193,7 +193,7 @@
       <div class="card">
         <div class="card-header d-flex justify-content-between align-items-center">
           <h5 class="mb-0">Users</h5>
-          <button class="btn btn-primary btn-sm" @click="showUserModal = true">
+          <button class="btn btn-primary btn-sm" @click="openUserEditor()">
             <i class="bi bi-plus-lg me-1"></i> Add User
           </button>
         </div>
@@ -229,7 +229,7 @@
                   <td>{{ user.last_login ? formatDate(user.last_login) : 'Never' }}</td>
                   <td>
                     <div class="btn-group btn-group-sm">
-                      <button class="btn btn-outline-secondary" @click="editUser(user)" title="Edit">
+                      <button class="btn btn-outline-secondary" @click="openUserEditor(user)" title="Edit">
                         <i class="bi bi-pencil"></i>
                       </button>
                       <button class="btn btn-outline-danger" @click="deleteUserConfirm(user)" title="Delete"
@@ -461,6 +461,7 @@ import { getRoleBadgeClass } from '../utils/badges'
 import ConfirmModal from './ConfirmModal.vue'
 import { useSettingsNotifications } from '../composables/useSettingsNotifications'
 import { useSettingsWebhooks } from '../composables/useSettingsWebhooks'
+import { useSettingsUsers } from '../composables/useSettingsUsers'
 
 const authStore = useAuthStore()
 const notificationsStore = useNotificationsStore()
@@ -469,16 +470,6 @@ const mainStore = useMainStore()
 // State
 const activeTab = ref('notifications')
 const saving = ref(false)
-
-// Computed
-const isAdmin = computed(() => authStore.isAdmin)
-const currentUser = computed(() => authStore.user)
-
-// Users
-const users = ref([])
-const showUserModal = ref(false)
-const editingUser = ref(null)
-const userForm = ref({ username: '', email: '', full_name: '', role: 'viewer', password: '', is_active: true })
 
 // Confirmation
 const showConfirm = ref(false)
@@ -544,6 +535,26 @@ const {
   testWebhook: runWebhookTest
 } = webhooksManager
 
+const usersManager = useSettingsUsers({
+  usersApi,
+  authStore,
+  mainStore
+})
+
+const {
+  users,
+  showUserModal,
+  editingUser,
+  userForm,
+  isAdmin,
+  currentUser,
+  loadUsers,
+  getRoleBadge,
+  resetUserForm,
+  editUser,
+  saveUser: persistUser
+} = usersManager
+
 // Lifecycle
 onMounted(async () => {
   await Promise.all([
@@ -566,20 +577,6 @@ watch(showChannelModal, (val) => { if (val) { resetChannelForm(); channelModal?.
 watch(showRuleModal, (val) => { if (val) { resetRuleForm(); ruleModal?.show() } })
 watch(showWebhookModal, (val) => { if (val) { resetWebhookForm(); webhookModal?.show() } })
 watch(showUserModal, (val) => { if (val) { resetUserForm(); userModal?.show() } })
-
-async function loadUsers() {
-  if (!isAdmin.value) return
-  try {
-    const response = await usersApi.list()
-    users.value = response.items || []
-  } catch (error) { console.error('Failed to load users:', error) }
-}
-
-// Helpers
-function getRoleBadge(role) {
-  const badges = { admin: 'badge bg-danger', operator: 'badge bg-primary', viewer: 'badge bg-secondary' }
-  return badges[role] || 'badge bg-secondary'
-}
 
 // Channel methods
 function openChannelEditor(channel = null) {
@@ -660,17 +657,19 @@ async function testWebhook(webhook) {
 }
 
 // User methods
-function editUser(user) { editingUser.value = user; userForm.value = { ...user, password: '' }; userModal?.show() }
+function openUserEditor(user = null) {
+  if (user) {
+    editUser(user, () => userModal?.show())
+    return
+  }
+  showUserModal.value = true
+}
+
 async function saveUser() {
   saving.value = true
   try {
-    const data = { ...userForm.value }
-    if (!data.password) delete data.password
-    if (editingUser.value?.id) await usersApi.update(editingUser.value.id, data)
-    else await usersApi.create(data)
+    await persistUser()
     userModal?.hide()
-    await loadUsers()
-    mainStore.addNotification('success', 'User saved')
   } catch (error) { mainStore.addNotification('error', 'Failed to save user: ' + error.message) }
   finally { saving.value = false }
 }
@@ -681,7 +680,6 @@ function deleteUserConfirm(user) {
   pendingAction.value = async () => { await usersApi.delete(user.id); await loadUsers() }
   showConfirm.value = true
 }
-function resetUserForm() { editingUser.value = null; userForm.value = { username: '', email: '', full_name: '', role: 'viewer', password: '', is_active: true } }
 
 // Confirmation handler
 async function handleConfirm() {
