@@ -184,8 +184,6 @@
 
 <script setup>
 import { ref, onMounted, onUnmounted, nextTick } from 'vue'
-import { Network } from 'vis-network'
-import { DataSet } from 'vis-data'
 import { topologyApi } from '../services/api'
 import { Modal } from 'bootstrap'
 
@@ -201,6 +199,8 @@ let network = null
 let nodes = null
 let edges = null
 let detailModal = null
+let NetworkConstructor = null
+let DataSetConstructor = null
 
 const networkOptions = {
   nodes: {
@@ -258,6 +258,20 @@ const networkOptions = {
   }
 }
 
+const loadNetworkLibrary = async () => {
+  if (NetworkConstructor && DataSetConstructor) {
+    return
+  }
+
+  const [{ Network }, { DataSet }] = await Promise.all([
+    import('vis-network'),
+    import('vis-data')
+  ])
+
+  NetworkConstructor = Network
+  DataSetConstructor = DataSet
+}
+
 const loadTopology = async () => {
   loading.value = true
   try {
@@ -283,11 +297,12 @@ const loadTopology = async () => {
 
 const initNetwork = async (data) => {
   await nextTick()
+  await loadNetworkLibrary()
 
-  nodes = new DataSet(data.nodes)
-  edges = new DataSet(data.edges)
+  nodes = new DataSetConstructor(data.nodes)
+  edges = new DataSetConstructor(data.edges)
 
-  network = new Network(
+  network = new NetworkConstructor(
     networkContainer.value,
     { nodes, edges },
     networkOptions
