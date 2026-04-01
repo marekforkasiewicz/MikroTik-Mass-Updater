@@ -381,8 +381,7 @@
 </template>
 
 <script setup>
-import { ref, computed, onMounted, nextTick, watch } from 'vue'
-import { Modal } from 'bootstrap'
+import { ref, onMounted, watch } from 'vue'
 import { useMainStore } from '../stores/main'
 import { useSchedulesStore } from '../stores/schedules'
 import { backupsApi, routerApi, taskApi } from '../services/api'
@@ -392,20 +391,16 @@ import ConfirmModal from './ConfirmModal.vue'
 import ResultsSummary from './shared/ResultsSummary.vue'
 import { useAutomationSchedules } from '../composables/useAutomationSchedules'
 import { useAutomationBackups } from '../composables/useAutomationBackups'
+import { useAutomationTasks } from '../composables/useAutomationTasks'
+import { useModalManager } from '../composables/useModalManager'
 
 const store = useMainStore()
 const schedulesStore = useSchedulesStore()
+const { registerModal, showModal, hideModal } = useModalManager()
 
 // State
 const activeTab = ref('schedules')
 const saving = ref(false)
-const loadingTasks = ref(false)
-
-// Tasks
-const tasks = computed(() => store.tasks)
-const runningTasks = computed(() => tasks.value.filter(t => t.status === 'running'))
-const showTaskDetail = ref(false)
-const selectedTask = ref(null)
 
 // Confirmation
 const showConfirm = ref(false)
@@ -418,8 +413,6 @@ const pendingAction = ref(null)
 // Modals
 const scheduleModalEl = ref(null)
 const backupModalEl = ref(null)
-let scheduleModal = null
-let backupModal = null
 
 const schedulesManager = useAutomationSchedules({ schedulesStore })
 
@@ -457,33 +450,53 @@ const {
   removeBackup
 } = backupsManager
 
+const tasksManager = useAutomationTasks({
+  store,
+  taskApi
+})
+
+const {
+  loadingTasks,
+  tasks,
+  runningTasks,
+  showTaskDetail,
+  selectedTask,
+  refreshTasks,
+  viewTask,
+  cancelTask,
+  deleteTask: removeTask,
+  getTaskStatusClass,
+  getTaskStatusIcon,
+  formatTaskType,
+  getProgressPercent,
+  getDuration
+} = tasksManager
+
 // Lifecycle
 onMounted(async () => {
+  registerModal('schedule', scheduleModalEl)
+  registerModal('backup', backupModalEl)
+
   await Promise.all([
     schedulesStore.fetchSchedules(),
     loadBackups(),
     loadRouters(),
     store.fetchTasks()
   ])
-
-  nextTick(() => {
-    if (scheduleModalEl.value) scheduleModal = new Modal(scheduleModalEl.value)
-    if (backupModalEl.value) backupModal = new Modal(backupModalEl.value)
-  })
 })
 
-watch(showScheduleModal, (val) => { if (val) { resetScheduleForm(); scheduleModal?.show() } })
-watch(showBackupModal, (val) => { if (val) { resetBackupForm(); backupModal?.show() } })
+watch(showScheduleModal, (val) => { if (val) { resetScheduleForm(); showModal('schedule') } })
+watch(showBackupModal, (val) => { if (val) { resetBackupForm(); showModal('backup') } })
 
 function openScheduleEditor(schedule) {
-  editSchedule(schedule, () => scheduleModal?.show())
+  editSchedule(schedule, () => showModal('schedule'))
 }
 
 async function saveSchedule() {
   saving.value = true
   try {
     await persistSchedule()
-    scheduleModal?.hide()
+    hideModal('schedule')
   } finally {
     saving.value = false
   }
@@ -510,7 +523,7 @@ async function createBackup() {
   saving.value = true
   try {
     await runCreateBackup()
-    backupModal?.hide()
+    hideModal('backup')
   } finally {
     saving.value = false
   }
@@ -536,60 +549,14 @@ function deleteBackup(backup) {
   showConfirm.value = true
 }
 
-// Task methods
-async function refreshTasks() {
-  loadingTasks.value = true
-  try { await store.fetchTasks() }
-  finally { loadingTasks.value = false }
-}
-
-async function viewTask(task) {
-  try {
-    selectedTask.value = await taskApi.get(task.id)
-    showTaskDetail.value = true
-  } catch (error) {
-    store.addNotification('error', 'Failed to load task')
-  }
-}
-
-function cancelTask(task) { store.cancelTask(task.id) }
-
 function deleteTask(task) {
   confirmTitle.value = 'Delete Task'
   confirmMessage.value = 'Delete this task?'
   confirmVariant.value = 'danger'
   pendingAction.value = async () => {
-    await taskApi.delete(task.id)
-    await store.fetchTasks()
+    await removeTask(task)
   }
   showConfirm.value = true
-}
-
-function getTaskStatusClass(status) {
-  const c = { pending: 'bg-secondary', running: 'bg-primary', completed: 'bg-success', failed: 'bg-danger', cancelled: 'bg-warning text-dark' }
-  return c[status] || 'bg-secondary'
-}
-
-function getTaskStatusIcon(status) {
-  const i = { pending: 'bi-hourglass', running: 'bi-gear spin', completed: 'bi-check-circle', failed: 'bi-x-circle', cancelled: 'bi-slash-circle' }
-  return i[status] || 'bi-question-circle'
-}
-
-function formatTaskType(type) {
-  const t = { scan: 'Full Scan', quick_scan: 'Quick Scan', update: 'Update', backup: 'Backup', firmware_upgrade: 'Firmware Upgrade' }
-  return t[type] || type
-}
-
-function getProgressPercent(task) {
-  if (!task.total) return 0
-  return Math.round((task.progress / task.total) * 100)
-}
-
-function getDuration(task) {
-  if (!task.started_at) return '-'
-  const start = new Date(task.started_at)
-  const end = task.completed_at ? new Date(task.completed_at) : new Date()
-  return formatDuration(Math.round((end - start) / 1000))
 }
 
 // Confirmation handler
