@@ -11,7 +11,7 @@ from ..schemas.user import (
     APIKeyCreate, APIKeyResponse, APIKeyCreatedResponse, APIKeyListResponse
 )
 from ..services.auth_service import AuthService
-from ..core.deps import CurrentUser, AdminUser
+from ..core.deps import CurrentUser, AdminUser, SessionUser
 from ..core.permissions import Role
 
 router = APIRouter(prefix="/users", tags=["Users"])
@@ -64,7 +64,7 @@ async def create_user(
 @router.get("/{user_id}", response_model=UserResponse)
 async def get_user(
     user_id: int,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get user by ID"""
@@ -91,7 +91,7 @@ async def get_user(
 async def update_user(
     user_id: int,
     user_data: UserUpdate,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Update user"""
@@ -158,7 +158,7 @@ async def delete_user(
 # API Key endpoints
 @router.get("/me/api-keys", response_model=APIKeyListResponse)
 async def list_my_api_keys(
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """List current user's API keys"""
@@ -174,7 +174,7 @@ async def list_my_api_keys(
 @router.post("/me/api-keys", response_model=APIKeyCreatedResponse, status_code=status.HTTP_201_CREATED)
 async def create_api_key(
     key_data: APIKeyCreate,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Create a new API key for current user"""
@@ -195,7 +195,7 @@ async def create_api_key(
 @router.delete("/me/api-keys/{key_id}", status_code=status.HTTP_204_NO_CONTENT)
 async def delete_my_api_key(
     key_id: int,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Delete an API key"""
@@ -212,7 +212,7 @@ async def delete_my_api_key(
 @router.post("/me/api-keys/{key_id}/revoke", status_code=status.HTTP_204_NO_CONTENT)
 async def revoke_api_key(
     key_id: int,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Revoke an API key (keep but deactivate)"""

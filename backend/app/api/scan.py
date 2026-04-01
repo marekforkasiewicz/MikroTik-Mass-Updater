@@ -2,7 +2,7 @@
 
 import asyncio
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from sqlalchemy.orm import Session
 
@@ -14,7 +14,8 @@ from ..schemas.task import TaskResponse
 from ..services.scan_service import ScanService
 from ..services.router_service import RouterService, HostInfo
 from ..core.enums import TaskStatus, TaskType
-from ..core.deps import CurrentUser, OperatorUser
+from ..core.deps import OperatorUser, require_permission
+from ..core.permissions import Permission
 from ..config import settings
 import re
 
@@ -443,7 +444,7 @@ def quick_scan_single(
 @router.get("/firmware/{router_id}")
 def check_firmware_status(
     router_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.RUN_SCAN))],
     db: Session = Depends(get_db)
 ):
     """Check firmware status of a single router"""

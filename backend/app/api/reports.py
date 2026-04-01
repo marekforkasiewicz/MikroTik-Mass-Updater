@@ -39,7 +39,7 @@ async def generate_report(
 
 @router.get("")
 async def list_reports(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_REPORTS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """List generated reports"""
@@ -52,7 +52,7 @@ async def list_reports(
 @router.get("/download/{filename}")
 async def download_report(
     filename: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_REPORTS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Download a generated report"""
@@ -102,7 +102,7 @@ async def delete_report(
 # Quick export endpoints (inline response)
 @router.get("/quick/inventory")
 async def quick_export_inventory(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.EXPORT_REPORTS))],
     db: Annotated[Session, Depends(get_db)],
     format: str = Query("csv", pattern="^(csv|json)$")
 ):
@@ -139,7 +139,7 @@ async def quick_export_inventory(
 
 @router.get("/quick/health")
 async def quick_export_health(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.EXPORT_REPORTS))],
     db: Annotated[Session, Depends(get_db)],
     format: str = Query("csv", pattern="^(csv|json)$")
 ):

@@ -21,9 +21,15 @@ class Permission(str, Enum):
 
     # Scan permissions
     RUN_SCAN = "run_scan"
+    VIEW_DISCOVERY = "view_discovery"
+    VIEW_VERSIONS = "view_versions"
 
     # Update permissions
     RUN_UPDATES = "run_updates"
+    VIEW_TASKS = "view_tasks"
+    VIEW_DASHBOARD = "view_dashboard"
+    VIEW_TOPOLOGY = "view_topology"
+    MANAGE_TOPOLOGY = "manage_topology"
 
     # User management
     VIEW_USERS = "view_users"
@@ -88,7 +94,13 @@ ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
         Permission.ADD_ROUTERS,
         Permission.EDIT_ROUTERS,
         Permission.RUN_SCAN,
+        Permission.VIEW_DISCOVERY,
+        Permission.VIEW_VERSIONS,
         Permission.RUN_UPDATES,
+        Permission.VIEW_TASKS,
+        Permission.VIEW_DASHBOARD,
+        Permission.VIEW_TOPOLOGY,
+        Permission.MANAGE_TOPOLOGY,
 
         # Scripts
         Permission.VIEW_SCRIPTS,
@@ -132,6 +144,11 @@ ROLE_PERMISSIONS: dict[Role, List[Permission]] = {
 
     Role.VIEWER: [
         Permission.VIEW_ROUTERS,
+        Permission.VIEW_DISCOVERY,
+        Permission.VIEW_VERSIONS,
+        Permission.VIEW_TASKS,
+        Permission.VIEW_DASHBOARD,
+        Permission.VIEW_TOPOLOGY,
         Permission.VIEW_SCRIPTS,
         Permission.VIEW_SCHEDULES,
         Permission.VIEW_BACKUPS,

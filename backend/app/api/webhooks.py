@@ -13,7 +13,7 @@ from ..schemas.webhook import (
     WebhookEventsListResponse
 )
 from ..services.webhook_service import WebhookService, WEBHOOK_EVENTS
-from ..core.deps import CurrentUser, AdminUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/webhooks", tags=["Webhooks"])
 
 @router.get("", response_model=WebhookListResponse)
 async def list_webhooks(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_WEBHOOKS))],
     db: Annotated[Session, Depends(get_db)],
     enabled_only: bool = Query(False),
     skip: int = Query(0, ge=0),
@@ -38,7 +38,9 @@ async def list_webhooks(
 
 
 @router.get("/events", response_model=WebhookEventsListResponse)
-async def get_available_events(current_user: CurrentUser):
+async def get_available_events(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_WEBHOOKS))]
+):
     """Get list of available webhook events"""
     return WebhookEventsListResponse(
         events=[
@@ -72,7 +74,7 @@ async def create_webhook(
 @router.get("/{webhook_id}", response_model=WebhookResponse)
 async def get_webhook(
     webhook_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_WEBHOOKS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get webhook by ID"""
@@ -146,7 +148,7 @@ async def test_webhook(
 @router.get("/{webhook_id}/deliveries", response_model=WebhookDeliveryListResponse)
 async def get_webhook_deliveries(
     webhook_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_WEBHOOKS))],
     db: Annotated[Session, Depends(get_db)],
     status: Optional[str] = Query(None),
     skip: int = Query(0, ge=0),
@@ -184,7 +186,7 @@ async def resend_delivery(
 
 @router.get("/deliveries/recent", response_model=WebhookDeliveryListResponse)
 async def get_recent_deliveries(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_WEBHOOKS))],
     db: Annotated[Session, Depends(get_db)],
     status: Optional[str] = Query(None),
     limit: int = Query(50, ge=1, le=500)

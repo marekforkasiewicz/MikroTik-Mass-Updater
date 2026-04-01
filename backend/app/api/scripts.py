@@ -13,7 +13,7 @@ from ..schemas.script import (
     ValidateScriptRequest, ValidateScriptResponse
 )
 from ..services.script_service import ScriptService
-from ..core.deps import CurrentUser, OperatorUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission, Role
 
 router = APIRouter(prefix="/scripts", tags=["Scripts"])
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/scripts", tags=["Scripts"])
 
 @router.get("", response_model=ScriptListResponse)
 async def list_scripts(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCRIPTS))],
     db: Annotated[Session, Depends(get_db)],
     category: Optional[str] = Query(None),
     enabled_only: bool = Query(False),
@@ -46,7 +46,7 @@ async def list_scripts(
 
 @router.get("/categories")
 async def get_script_categories(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCRIPTS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get list of script categories"""
@@ -79,7 +79,7 @@ async def create_script(
 @router.post("/validate", response_model=ValidateScriptResponse)
 async def validate_script(
     request: ValidateScriptRequest,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCRIPTS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Validate script syntax"""
@@ -92,7 +92,7 @@ async def validate_script(
 @router.get("/{script_id}", response_model=ScriptResponse)
 async def get_script(
     script_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCRIPTS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get script by ID"""
@@ -260,7 +260,7 @@ async def bulk_execute_script(
 @router.get("/{script_id}/executions", response_model=ScriptExecutionListResponse)
 async def get_script_executions(
     script_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCRIPTS))],
     db: Annotated[Session, Depends(get_db)],
     router_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),

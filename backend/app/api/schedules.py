@@ -12,7 +12,7 @@ from ..schemas.schedule import (
     CronDescriptionResponse
 )
 from ..services.scheduler_service import SchedulerService
-from ..core.deps import CurrentUser, OperatorUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/schedules", tags=["Schedules"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/schedules", tags=["Schedules"])
 
 @router.get("", response_model=ScheduleListResponse)
 async def list_schedules(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCHEDULES))],
     db: Annotated[Session, Depends(get_db)],
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000)
@@ -63,7 +63,7 @@ async def create_schedule(
 
 @router.get("/cron-describe")
 async def describe_cron(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCHEDULES))],
     cron: str = Query(..., description="Cron expression to describe"),
     db: Annotated[Session, Depends(get_db)] = None
 ):
@@ -77,7 +77,7 @@ async def describe_cron(
 @router.get("/{schedule_id}", response_model=ScheduleResponse)
 async def get_schedule(
     schedule_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCHEDULES))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get scheduled task by ID"""
@@ -197,7 +197,7 @@ async def run_schedule_now(
 @router.get("/{schedule_id}/executions", response_model=ScheduleExecutionListResponse)
 async def get_schedule_executions(
     schedule_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_SCHEDULES))],
     db: Annotated[Session, Depends(get_db)],
     skip: int = Query(0, ge=0),
     limit: int = Query(50, ge=1, le=500)

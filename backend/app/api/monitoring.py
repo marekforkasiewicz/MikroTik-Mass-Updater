@@ -15,7 +15,7 @@ from ..schemas.monitoring import (
     MonitoringOverviewResponse
 )
 from ..services.monitoring_service import MonitoringService
-from ..core.deps import CurrentUser, OperatorUser, require_permission
+from ..core.deps import OperatorUser, require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
@@ -23,7 +23,7 @@ router = APIRouter(prefix="/monitoring", tags=["Monitoring"])
 
 @router.get("/overview", response_model=MonitoringOverviewResponse)
 async def get_monitoring_overview(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get monitoring overview for all routers"""
@@ -34,7 +34,7 @@ async def get_monitoring_overview(
 
 @router.get("/config", response_model=MonitoringConfigResponse)
 async def get_global_config(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get global monitoring configuration"""
@@ -59,7 +59,7 @@ async def update_global_config(
 @router.get("/routers/{router_id}/config", response_model=MonitoringConfigResponse)
 async def get_router_config(
     router_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get monitoring configuration for a router"""
@@ -119,7 +119,7 @@ async def trigger_health_check(
 @router.get("/routers/{router_id}/history", response_model=HealthCheckListResponse)
 async def get_health_history(
     router_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)],
     check_type: Optional[str] = Query(None),
     hours: int = Query(24, ge=1, le=720)
@@ -137,7 +137,7 @@ async def get_health_history(
 # Alert endpoints
 @router.get("/alerts", response_model=AlertListResponse)
 async def get_alerts(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)],
     router_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -157,7 +157,7 @@ async def get_alerts(
 
 @router.get("/alerts/active")
 async def get_active_alerts(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get all active (unresolved) alerts"""
@@ -202,7 +202,7 @@ async def resolve_alerts(
 @router.get("/alerts/{alert_id}", response_model=AlertResponse)
 async def get_alert(
     alert_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_MONITORING))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get alert by ID"""

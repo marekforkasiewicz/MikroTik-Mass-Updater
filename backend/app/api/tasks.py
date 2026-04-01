@@ -2,7 +2,7 @@
 
 import logging
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, BackgroundTasks
 from fastapi.responses import PlainTextResponse
 from sqlalchemy.orm import Session
@@ -17,7 +17,8 @@ from ..services.backup_service import BackupService
 from ..services.router_service import RouterService, HostInfo
 from ..services.task_log_service import TaskLogService
 from ..core.enums import TaskStatus, TaskType, UpdateTree
-from ..core.deps import CurrentUser, OperatorUser
+from ..core.deps import OperatorUser, require_permission
+from ..core.permissions import Permission
 from ..config import settings
 
 task_logger = logging.getLogger("task_operations")
@@ -253,7 +254,7 @@ def run_update_task(task_id: str, config: dict, db_url: str):
 
 @router.get("", response_model=TaskListResponse)
 def list_tasks(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))],
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 50,
@@ -305,7 +306,7 @@ def create_task(
 @router.get("/{task_id}", response_model=TaskResponse)
 def get_task(
     task_id: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))],
     db: Session = Depends(get_db)
 ):
     """Get task status"""
@@ -391,7 +392,9 @@ def start_update_task(
 # ============== Log Files Management Endpoints ==============
 
 @router.get("/logs/files")
-def list_log_files(current_user: CurrentUser):
+def list_log_files(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))]
+):
     """List all log files with metadata and summary"""
     files = TaskLogService.list_log_files()
     stats = TaskLogService.get_statistics()
@@ -405,7 +408,7 @@ def list_log_files(current_user: CurrentUser):
 @router.get("/logs/files/{filename}")
 def get_log_file(
     filename: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))],
     raw: bool = False,
 ):
     """Get content of a specific log file. Use raw=true for plain text."""
@@ -422,7 +425,10 @@ def get_log_file(
 
 
 @router.get("/logs/files/{filename}/raw", response_class=PlainTextResponse)
-def get_log_file_raw(filename: str, current_user: CurrentUser):
+def get_log_file_raw(
+    filename: str,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))]
+):
     """Get raw content of a log file"""
     try:
         content = TaskLogService.read_log_file(filename)
@@ -455,6 +461,8 @@ def cleanup_old_logs(
 
 
 @router.get("/logs/statistics")
-def get_log_statistics(current_user: CurrentUser):
+def get_log_statistics(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_TASKS))]
+):
     """Get overall statistics from all log files"""
     return TaskLogService.get_statistics()

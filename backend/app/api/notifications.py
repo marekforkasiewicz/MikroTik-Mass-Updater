@@ -15,7 +15,7 @@ from ..schemas.notification import (
     TestNotificationRequest, TestNotificationResponse
 )
 from ..services.notification_service import NotificationService
-from ..core.deps import CurrentUser, AdminUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/notifications", tags=["Notifications"])
@@ -24,7 +24,7 @@ router = APIRouter(prefix="/notifications", tags=["Notifications"])
 # Channel endpoints
 @router.get("/channels", response_model=NotificationChannelListResponse)
 async def list_channels(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_NOTIFICATIONS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """List all notification channels"""
@@ -52,7 +52,7 @@ async def create_channel(
 @router.get("/channels/{channel_id}", response_model=NotificationChannelResponse)
 async def get_channel(
     channel_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_NOTIFICATIONS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get channel by ID"""
@@ -122,7 +122,7 @@ async def test_channel(
 # Rule endpoints
 @router.get("/rules", response_model=NotificationRuleListResponse)
 async def list_rules(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_NOTIFICATIONS))],
     db: Annotated[Session, Depends(get_db)],
     channel_id: Optional[int] = Query(None)
 ):
@@ -197,7 +197,7 @@ async def delete_rule(
 # Log endpoints
 @router.get("/logs", response_model=NotificationLogListResponse)
 async def get_notification_logs(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_NOTIFICATIONS))],
     db: Annotated[Session, Depends(get_db)],
     channel_id: Optional[int] = Query(None),
     status: Optional[str] = Query(None),
@@ -215,7 +215,9 @@ async def get_notification_logs(
 
 # Available event types
 @router.get("/event-types")
-async def get_event_types(current_user: CurrentUser):
+async def get_event_types(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_NOTIFICATIONS))]
+):
     """Get available event types for notification rules"""
     return {
         "event_types": [

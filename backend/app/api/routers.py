@@ -1,7 +1,7 @@
 """API routes for router management"""
 
 from datetime import datetime
-from typing import List, Optional
+from typing import Annotated, List, Optional
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
@@ -12,7 +12,8 @@ from ..schemas.router import (
     RouterImport, RouterListResponse
 )
 from ..services.router_service import RouterService
-from ..core.deps import CurrentUser, OperatorUser
+from ..core.deps import OperatorUser, require_permission
+from ..core.permissions import Permission
 from .scan import _is_newer_version
 
 router = APIRouter(prefix="/routers", tags=["routers"])
@@ -20,7 +21,7 @@ router = APIRouter(prefix="/routers", tags=["routers"])
 
 @router.get("", response_model=RouterListResponse)
 def list_routers(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_ROUTERS))],
     db: Session = Depends(get_db),
     skip: int = 0,
     limit: int = 100,
@@ -66,7 +67,7 @@ def create_router(
 @router.get("/{router_id}", response_model=RouterResponse)
 def get_router(
     router_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_ROUTERS))],
     db: Session = Depends(get_db)
 ):
     """Get a specific router by ID"""

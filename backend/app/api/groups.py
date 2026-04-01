@@ -12,7 +12,7 @@ from ..schemas.group import (
     AddRoutersToGroupRequest, RemoveRoutersFromGroupRequest
 )
 from ..services.group_service import GroupService
-from ..core.deps import CurrentUser, OperatorUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/groups", tags=["Groups"])
@@ -20,7 +20,7 @@ router = APIRouter(prefix="/groups", tags=["Groups"])
 
 @router.get("", response_model=GroupListResponse)
 async def list_groups(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_GROUPS))],
     db: Annotated[Session, Depends(get_db)],
     skip: int = Query(0, ge=0),
     limit: int = Query(100, ge=1, le=1000)
@@ -40,7 +40,7 @@ async def list_groups(
 
 @router.get("/tree", response_model=List[GroupTreeResponse])
 async def get_group_tree(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_GROUPS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get groups in tree structure"""
@@ -90,7 +90,7 @@ async def create_group(
 @router.get("/{group_id}", response_model=GroupWithRoutersResponse)
 async def get_group(
     group_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_GROUPS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get group by ID"""
@@ -213,7 +213,7 @@ async def remove_routers_from_group(
 @router.get("/{group_id}/routers")
 async def get_group_routers(
     group_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_GROUPS))],
     db: Annotated[Session, Depends(get_db)],
     include_children: bool = Query(False)
 ):
@@ -240,7 +240,7 @@ async def get_group_routers(
 @router.get("/search/{query}")
 async def search_groups(
     query: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_GROUPS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Search groups by name or description"""

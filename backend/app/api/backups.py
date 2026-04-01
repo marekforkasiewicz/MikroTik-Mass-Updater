@@ -13,7 +13,7 @@ from ..schemas.backup import (
     BulkBackupRequest, BulkBackupResponse
 )
 from ..services.rollback_service import RollbackService
-from ..core.deps import CurrentUser, OperatorUser, require_permission
+from ..core.deps import require_permission
 from ..core.permissions import Permission
 
 router = APIRouter(prefix="/backups", tags=["Backups"])
@@ -21,7 +21,7 @@ router = APIRouter(prefix="/backups", tags=["Backups"])
 
 @router.get("", response_model=BackupListResponse)
 async def list_backups(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_BACKUPS))],
     db: Annotated[Session, Depends(get_db)],
     router_id: Optional[int] = Query(None),
     backup_type: Optional[str] = Query(None),
@@ -92,7 +92,7 @@ async def create_bulk_backup(
 @router.get("/{backup_id}", response_model=BackupResponse)
 async def get_backup(
     backup_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_BACKUPS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get backup by ID"""
@@ -128,7 +128,7 @@ async def delete_backup(
 @router.get("/{backup_id}/download")
 async def download_backup(
     backup_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_BACKUPS))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Download a backup file"""
@@ -183,7 +183,7 @@ async def restore_backup(
 
 @router.get("/rollback-logs", response_model=RollbackListResponse)
 async def list_rollback_logs(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_BACKUPS))],
     db: Annotated[Session, Depends(get_db)],
     router_id: Optional[int] = Query(None),
     skip: int = Query(0, ge=0),

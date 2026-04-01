@@ -1,12 +1,14 @@
 """API routes for MNDP neighbor discovery"""
 
 from typing import List, Optional
-from fastapi import APIRouter, HTTPException, Query
-from pydantic import BaseModel
+from typing import Annotated, List, Optional
+from fastapi import APIRouter, Depends, HTTPException, Query
 from datetime import datetime
+from pydantic import BaseModel
 
 from ..services.mndp_service import get_mndp_service, DiscoveredRouter
-from ..core.deps import CurrentUser
+from ..core.deps import require_permission
+from ..core.permissions import Permission
 
 router = APIRouter(prefix="/discovery", tags=["discovery"])
 
@@ -47,7 +49,7 @@ class DiscoveryStatsResponse(BaseModel):
 
 @router.get("", response_model=DiscoveryResponse)
 async def discover_devices(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DISCOVERY))],
     timeout: float = Query(default=5.0, ge=1.0, le=30.0, description="Discovery timeout in seconds"),
     force: bool = Query(default=False, description="Force new discovery, ignore cache")
 ):
@@ -87,7 +89,9 @@ async def discover_devices(
 
 
 @router.get("/cached", response_model=DiscoveryResponse)
-async def get_cached_discovery(current_user: CurrentUser):
+async def get_cached_discovery(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DISCOVERY))]
+):
     """
     Get cached discovery results without triggering a new scan.
     """
@@ -103,7 +107,9 @@ async def get_cached_discovery(current_user: CurrentUser):
 
 
 @router.post("/clear-cache")
-async def clear_discovery_cache(current_user: CurrentUser):
+async def clear_discovery_cache(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DISCOVERY))]
+):
     """Clear the discovery cache."""
     mndp_service = get_mndp_service()
     mndp_service.clear_cache()
@@ -113,7 +119,7 @@ async def clear_discovery_cache(current_user: CurrentUser):
 @router.post("/add/{mac_address}")
 async def add_discovered_router(
     mac_address: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.ADD_ROUTERS))],
     username: str = Query(default="admin"),
     password: str = Query(default="")
 ):

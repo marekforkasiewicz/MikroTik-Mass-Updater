@@ -11,14 +11,15 @@ from ..schemas.dashboard import (
     UptimeHistoryResponse
 )
 from ..services.dashboard_service import DashboardService
-from ..core.deps import CurrentUser
+from ..core.deps import require_permission
+from ..core.permissions import Permission
 
 router = APIRouter(prefix="/dashboard", tags=["Dashboard"])
 
 
 @router.get("", response_model=DashboardResponse)
 async def get_dashboard(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get complete dashboard data"""
@@ -30,7 +31,7 @@ async def get_dashboard(
 
 @router.get("/stats")
 async def get_stats(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get quick stats overview"""
@@ -46,7 +47,7 @@ async def get_stats(
 @router.get("/charts/{chart_type}", response_model=ChartResponse)
 async def get_chart(
     chart_type: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get data for a specific chart"""
@@ -63,7 +64,7 @@ async def get_chart(
 @router.get("/time-series/{metric}", response_model=TimeSeriesResponse)
 async def get_time_series(
     metric: str,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)],
     router_id: Optional[int] = Query(None),
     hours: int = Query(24, ge=1, le=168)
@@ -82,7 +83,7 @@ async def get_time_series(
 @router.get("/uptime/{router_id}", response_model=UptimeHistoryResponse)
 async def get_uptime_history(
     router_id: int,
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)],
     hours: int = Query(24, ge=1, le=720)
 ):
@@ -95,7 +96,7 @@ async def get_uptime_history(
 
 @router.get("/activity")
 async def get_recent_activity(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)],
     limit: int = Query(10, ge=1, le=50)
 ):
@@ -108,7 +109,7 @@ async def get_recent_activity(
 
 @router.get("/schedules")
 async def get_upcoming_schedules(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)],
     limit: int = Query(5, ge=1, le=20)
 ):
@@ -121,7 +122,7 @@ async def get_upcoming_schedules(
 
 @router.get("/system-status")
 async def get_system_status(
-    current_user: CurrentUser,
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_DASHBOARD))],
     db: Annotated[Session, Depends(get_db)]
 ):
     """Get system status"""

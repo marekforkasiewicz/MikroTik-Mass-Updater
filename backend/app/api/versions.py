@@ -3,11 +3,11 @@
 import asyncio
 import logging
 from datetime import datetime, timedelta
-from typing import Dict, Optional
-
+from typing import Annotated, Dict, Optional
+from fastapi import APIRouter, Depends, HTTPException
 import httpx
-from fastapi import APIRouter, HTTPException
-from ..core.deps import CurrentUser, OperatorUser
+from ..core.deps import OperatorUser, require_permission
+from ..core.permissions import Permission
 
 logger = logging.getLogger(__name__)
 
@@ -117,7 +117,9 @@ async def fetch_all_versions() -> Dict:
 
 
 @router.get("")
-async def get_routeros_versions(current_user: CurrentUser):
+async def get_routeros_versions(
+    current_user: Annotated[None, Depends(require_permission(Permission.VIEW_VERSIONS))]
+):
     """Get current RouterOS versions for all channels from MikroTik"""
     try:
         return await fetch_all_versions()

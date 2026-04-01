@@ -13,7 +13,7 @@ from ..schemas.user import (
     PasswordChangeRequest, UserResponse
 )
 from ..services.auth_service import AuthService
-from ..core.deps import get_current_active_user, CurrentUser
+from ..core.deps import SessionUser
 from ..config import settings
 
 router = APIRouter(prefix="/auth", tags=["Authentication"])
@@ -155,7 +155,7 @@ async def logout(response: Response):
 
 
 @router.get("/me", response_model=UserResponse)
-async def get_current_user_info(current_user: CurrentUser):
+async def get_current_user_info(current_user: SessionUser):
     """Get current user information"""
     return current_user
 
@@ -163,7 +163,7 @@ async def get_current_user_info(current_user: CurrentUser):
 @router.post("/change-password")
 async def change_password(
     password_data: PasswordChangeRequest,
-    current_user: CurrentUser,
+    current_user: SessionUser,
     db: Annotated[Session, Depends(get_db)]
 ):
     """Change current user's password"""

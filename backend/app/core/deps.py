@@ -137,6 +137,18 @@ async def get_current_active_user(
     return current_user
 
 
+async def get_current_non_api_key_user(
+    current_user: Annotated[User, Depends(get_current_active_user)]
+) -> User:
+    """Require token or cookie auth and reject API key authentication."""
+    if getattr(current_user, "_auth_via_api_key", False):
+        raise HTTPException(
+            status_code=status.HTTP_403_FORBIDDEN,
+            detail="API keys are not allowed for this operation"
+        )
+    return current_user
+
+
 async def get_optional_current_user(
     db: Annotated[Session, Depends(get_db)],
     token: Annotated[Optional[str], Depends(get_token_from_cookie_or_header)] = None,
@@ -238,5 +250,6 @@ RequireViewer = Depends(require_role([Role.ADMIN, Role.OPERATOR, Role.VIEWER]))
 # Typed annotations for common use
 CurrentUser = Annotated[User, Depends(get_current_active_user)]
 OptionalUser = Annotated[Optional[User], Depends(get_optional_current_user)]
+SessionUser = Annotated[User, Depends(get_current_non_api_key_user)]
 AdminUser = Annotated[User, Depends(require_role([Role.ADMIN]))]
 OperatorUser = Annotated[User, Depends(require_role([Role.ADMIN, Role.OPERATOR]))]
