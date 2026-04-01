@@ -730,6 +730,7 @@ import ConfirmModal from './ConfirmModal.vue'
 import { useMainStore } from '../stores/main'
 import { useTemplateDeployment } from '../composables/useTemplateDeployment'
 import { useTemplateProfiles } from '../composables/useTemplateProfiles'
+import { useTemplateInsights } from '../composables/useTemplateInsights'
 
 const mainStore = useMainStore()
 
@@ -747,21 +748,8 @@ const tagsInput = ref('')
 // Validation
 const validationResult = ref(null)
 
-// Preview
-const previewRouterId = ref(null)
-const previewVariables = ref({})
-const previewResult = ref('')
-const previewError = ref('')
-const previewLoading = ref(false)
-
 // Deploy
 const showDeployModal = ref(false)
-
-// Deployment History
-const showHistoryModal = ref(false)
-const deploymentHistory = ref([])
-const loadingHistory = ref(false)
-const selectedDeployDetail = ref(null)
 
 // Help
 const showHelpModal = ref(false)
@@ -851,6 +839,28 @@ const {
   saveProfile: persistProfile,
   deleteProfile
 } = profileManager
+
+const insights = useTemplateInsights({
+  templatesApi,
+  notify: (type, message) => mainStore.addNotification(type, message)
+})
+
+const {
+  previewRouterId,
+  previewVariables,
+  previewResult,
+  previewError,
+  previewLoading,
+  showHistoryModal,
+  deploymentHistory,
+  loadingHistory,
+  selectedDeployDetail,
+  previewTemplate: runTemplatePreview,
+  showDeployments: openDeploymentHistory,
+  showDeployDetails,
+  getDeployStatusBadge,
+  formatDate
+} = insights
 
 // Lifecycle
 onMounted(async () => {
@@ -986,28 +996,7 @@ async function validateTemplate() {
 }
 
 async function previewTemplate() {
-  if (!editingTemplate.value?.id) {
-    mainStore.addNotification('warning', 'Save the template first to preview')
-    return
-  }
-
-  previewLoading.value = true
-  previewError.value = ''
-  previewResult.value = ''
-
-  try {
-    const response = await templatesApi.preview(editingTemplate.value.id, {
-      router_id: previewRouterId.value,
-      variables: previewVariables.value
-    })
-    previewResult.value = response.rendered
-    previewModal?.show()
-  } catch (error) {
-    previewError.value = error.message
-    previewModal?.show()
-  } finally {
-    previewLoading.value = false
-  }
+  await runTemplatePreview(editingTemplate.value?.id, () => previewModal?.show())
 }
 
 async function saveTemplate() {
@@ -1073,43 +1062,7 @@ async function deployTemplate() {
 }
 
 async function showDeployments() {
-  if (!editingTemplate.value?.id) return
-
-  loadingHistory.value = true
-  deploymentHistory.value = []
-  selectedDeployDetail.value = null
-
-  try {
-    const response = await templatesApi.listDeployments({ template_id: editingTemplate.value.id })
-    deploymentHistory.value = response.items || []
-  } catch (error) {
-    console.error('Failed to load deployment history:', error)
-    mainStore.addNotification('error', 'Failed to load history')
-  } finally {
-    loadingHistory.value = false
-  }
-
-  showHistoryModal.value = true
-}
-
-function showDeployDetails(deploy) {
-  selectedDeployDetail.value = deploy.rendered_content
-}
-
-function getDeployStatusBadge(status) {
-  switch (status) {
-    case 'completed': return 'badge bg-success'
-    case 'failed': return 'badge bg-danger'
-    case 'running': return 'badge bg-primary'
-    case 'pending': return 'badge bg-warning'
-    default: return 'badge bg-secondary'
-  }
-}
-
-function formatDate(dateStr) {
-  if (!dateStr) return ''
-  const date = new Date(dateStr)
-  return date.toLocaleString()
+  await openDeploymentHistory(editingTemplate.value?.id)
 }
 
 async function saveProfile() {
