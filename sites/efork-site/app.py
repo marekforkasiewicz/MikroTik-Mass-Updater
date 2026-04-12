@@ -62,7 +62,7 @@ CREATE TABLE IF NOT EXISTS project_access_accounts (
 SEED_SQL = """
 INSERT OR IGNORE INTO clients (slug, name, company_name, status, contact_email, note)
 VALUES
-    ('infoveto', 'Infoveto', 'Infoveto', 'active', 'kontakt@infoveto.pl', 'Wewnętrzny wpis startowy do strefy klienta');
+    ('multifarm', 'Multifarm', 'Multifarm Opolskie Apteki Sp. z o.o.', 'active', 'kontakt@multifarm.pl', 'Dostęp do projektu Multifarm PBX');
 
 INSERT OR IGNORE INTO projects (
     client_id, slug, name, project_type, status, summary, stack, view_title, view_body, embed_url
@@ -79,7 +79,7 @@ SELECT
     'Multifarm PBX obsługuje automatyczne kampanie głosowe i SMS dotyczące recept. Kluczowa logika projektu działa na przyciskach IVR: wybór pacjenta uruchamia konkretną akcję, na przykład wysłanie SMS, powtórzenie komunikatu albo przejście do kolejnej recepty. System planuje połączenia, generuje komunikaty i zapisuje historię kontaktu z pacjentem.',
     'https://multifarm.efork.pl/'
 FROM clients c
-WHERE c.slug = 'infoveto';
+WHERE c.slug = 'multifarm';
 """
 
 
@@ -102,7 +102,31 @@ def init_db() -> None:
         }
         if 'embed_url' not in columns:
             conn.execute("ALTER TABLE projects ADD COLUMN embed_url TEXT")
+        conn.execute(
+            """
+            UPDATE clients
+            SET slug = 'multifarm'
+            WHERE slug = 'infoveto'
+              AND NOT EXISTS (
+                  SELECT 1
+                  FROM clients
+                  WHERE slug = 'multifarm'
+              )
+            """
+        )
         conn.executescript(SEED_SQL)
+        conn.execute(
+            """
+            UPDATE clients
+            SET
+                name = 'Multifarm',
+                company_name = 'Multifarm Opolskie Apteki Sp. z o.o.',
+                contact_email = 'kontakt@multifarm.pl',
+                note = 'Dostęp do projektu Multifarm PBX',
+                status = 'active'
+            WHERE slug = 'multifarm'
+            """
+        )
         conn.execute(
             """
             UPDATE projects
