@@ -48,7 +48,7 @@ cd docker
 docker-compose up -d
 ```
 
-Open http://localhost:8080
+Open http://localhost:8000
 
 ## Project Structure
 

@@ -1,0 +1,48 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strefa klienta | Logowanie</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell login-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">Strefa klienta</div>
+          <div class="brand-meta">Dostęp do widoków projektowych</div>
+        </div>
+        <a class="button button-secondary" href="/">Powrót</a>
+      </header>
+
+      <main class="layout">
+        <section class="login-card">
+          <div class="statement-label">Logowanie</div>
+          <h1>Wejdź do strefy klienta</h1>
+          <p>Każdy klient dostaje własne konto przypisane do konkretnego projektu. Po zalogowaniu system kieruje od razu do właściwego widoku.</p>
+          {% if error %}
+          <div class="form-error">{{ error }}</div>
+          {% endif %}
+          <form method="post" class="login-form">
+            <label>
+              <span>Login</span>
+              <input type="text" name="username" autocomplete="username" required />
+            </label>
+            <label>
+              <span>Hasło</span>
+              <input type="password" name="password" autocomplete="current-password" required />
+            </label>
+            <button class="button button-primary" type="submit">Zaloguj</button>
+          </form>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

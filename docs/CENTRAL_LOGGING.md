@@ -1,17 +1,17 @@
 # Central Logging
 
 ## Design
-All MikroTik routers forward operational logs to the central collector on `192.168.1.14:514/udp`.
+All MikroTik routers forward operational logs to the central collector on `192.168.1.15:514/udp`.
 
 Collector:
-- Host: `192.168.1.14`
+- Host: `192.168.1.15`
 - Service: `mikrotik-logs.service`
 - App: `/root/mikrotik-logs/app.py`
 - Storage: `/root/mikrotik-logs/data/logs.db`
 
 Router standard:
 - Action: built-in `remote`
-- Target: `192.168.1.14`
+- Target: `192.168.1.15`
 - Port: `514`
 - Protocol: `udp`
 - Format: `default`
@@ -48,8 +48,8 @@ Re-apply the standard:
 
 Check collector health:
 ```bash
-ssh -i /root/.ssh/id_mikrotik root@192.168.1.14 'systemctl status mikrotik-logs.service'
-ssh -i /root/.ssh/id_mikrotik root@192.168.1.14 'ss -lunp | grep ":514 "'
+ssh -i /root/.ssh/id_mikrotik root@192.168.1.15 'systemctl status mikrotik-logs.service'
+ssh -i /root/.ssh/id_mikrotik root@192.168.1.15 'ss -lunp | grep ":514 "'
 ```
 
 ## Notes

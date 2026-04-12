@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Strefa klienta | efork.pl</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">Strefa klienta</div>
+          <div class="brand-meta">Klient wybiera projekt, a system rozdziela widok dalej.</div>
+        </div>
+        <a class="button button-secondary" href="/">Powrót</a>
+      </header>
+
+      <main class="layout">
+        <section class="statement">
+          <div class="statement-label">Klienci</div>
+          <p>
+            To jest warstwa rozdzielająca widoki per klient i per projekt.
+            Na razie działa na lekkiej bazie SQLite, więc dodanie kolejnych rekordów
+            nie wymaga przebudowy strony.
+          </p>
+        </section>
+
+        <section class="grid">
+          {% for client in clients %}
+          <article class="card">
+            <h2>{{ client.name }}</h2>
+            <p>{{ client.company_name or client.name }}</p>
+            <p>Status: <strong>{{ client.status }}</strong></p>
+            <p>Projekty: <strong>{{ client.project_count }}</strong></p>
+            {% if client.contact_email %}
+            <p>{{ client.contact_email }}</p>
+            {% endif %}
+            <a class="button button-primary" href="/strefa-klienta/{{ client.slug }}">Otwórz</a>
+          </article>
+          {% else %}
+          <article class="card">
+            <h2>Brak klientów</h2>
+            <p>Baza jest gotowa, ale nie ma jeszcze rekordów do pokazania.</p>
+          </article>
+          {% endfor %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

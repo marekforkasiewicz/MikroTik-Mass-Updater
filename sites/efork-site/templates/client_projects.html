@@ -1,0 +1,50 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ client.name }} | Projekty</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">{{ client.name }}</div>
+          <div class="brand-meta">Lista projektów przypisanych do klienta</div>
+        </div>
+        <form method="post" action="/strefa-klienta/logout">
+          <button class="button button-secondary" type="submit">Wyloguj</button>
+        </form>
+      </header>
+
+      <main class="layout">
+        <section class="grid">
+          {% for project in projects %}
+          <article class="card">
+            <h2>{{ project.name }}</h2>
+            <p>{{ project.summary }}</p>
+            <p>Typ: <strong>{{ project.project_type or 'projekt' }}</strong></p>
+            <p>Status: <strong>{{ project.status }}</strong></p>
+            {% if project.stack %}
+            <p>Stack: {{ project.stack }}</p>
+            {% endif %}
+            <a class="button button-primary" href="/strefa-klienta/{{ client.slug }}/{{ project.slug }}">Widok projektu</a>
+          </article>
+          {% else %}
+          <article class="card">
+            <h2>Brak projektów</h2>
+            <p>Klient istnieje, ale nie ma jeszcze przypisanych widoków projektowych.</p>
+          </article>
+          {% endfor %}
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

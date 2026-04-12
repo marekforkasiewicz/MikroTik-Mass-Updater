@@ -1,0 +1,83 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>{{ project.name }} | {{ client.name }}</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">{{ project.name }}</div>
+          <div class="brand-meta">{{ client.name }} / widok projektowy</div>
+        </div>
+        <div class="topbar-actions">
+          <a class="button button-secondary" href="/strefa-klienta/{{ client.slug }}">Powrót do projektów</a>
+          <form method="post" action="/strefa-klienta/logout">
+            <button class="button button-secondary" type="submit">Wyloguj</button>
+          </form>
+        </div>
+      </header>
+
+      <main class="layout">
+        <section class="statement">
+          <div class="statement-label">{{ project.view_title or 'Widok projektu' }}</div>
+          <p>{{ project.view_body or project.summary }}</p>
+        </section>
+
+        <section class="grid">
+          <article class="card">
+            <h2>Klient</h2>
+            <p>{{ client.name }}</p>
+            {% if client.company_name and client.company_name != client.name %}
+            <p>{{ client.company_name }}</p>
+            {% endif %}
+            {% if client.contact_email %}
+            <p>{{ client.contact_email }}</p>
+            {% endif %}
+          </article>
+
+          <article class="card">
+            <h2>Status</h2>
+            <p>{{ project.status }}</p>
+            <p>Typ: {{ project.project_type or 'projekt' }}</p>
+            {% if project.stack %}
+            <p>Stack: {{ project.stack }}</p>
+            {% endif %}
+          </article>
+
+          <article class="card card-accent">
+            <h2>Zakres</h2>
+            <p>{{ project.summary }}</p>
+          </article>
+        </section>
+
+        {% if project.embed_url %}
+        <section class="card embed-card">
+          <div class="embed-header">
+            <h2>Widok projektu</h2>
+            <p class="embed-note">Projekt jest osadzony bezpośrednio w strefie klienta.</p>
+          </div>
+          <div class="embed-frame-wrap">
+            <iframe
+              class="embed-frame"
+              src="{{ project.embed_url }}"
+              title="{{ project.name }}"
+              loading="lazy"
+              referrerpolicy="strict-origin-when-cross-origin"
+            ></iframe>
+          </div>
+        </section>
+        {% endif %}
+      </main>
+    </div>
+  </body>
+</html>

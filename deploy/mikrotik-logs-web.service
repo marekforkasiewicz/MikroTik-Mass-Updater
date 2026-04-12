@@ -1,0 +1,15 @@
+[Unit]
+Description=MikroTik Logs Web UI
+After=network-online.target mikrotik-logs.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/python3 /root/mikrotik-logs/web.py --bind 0.0.0.0 --port 8514 --db-path /root/mikrotik-logs/data/logs.db
+Restart=always
+RestartSec=2
+User=root
+WorkingDirectory=/root/mikrotik-logs
+
+[Install]
+WantedBy=multi-user.target

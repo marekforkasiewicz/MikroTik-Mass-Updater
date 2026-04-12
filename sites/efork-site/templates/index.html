@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="pl">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>efork.pl | Marek Forkasiewicz</title>
+    <meta
+      name="description"
+      content="Marek Forkasiewicz. Projekty dla biznesu, automatyzacja, systemy wewnętrzne i AI wdrażane z inżynierskim rygorem."
+    />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=Manrope:wght@400;500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='styles.css') }}" />
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="topbar">
+        <div>
+          <div class="brand">Marek Forkasiewicz</div>
+          <div class="brand-meta">DevOps / Programista</div>
+        </div>
+        <a class="button button-secondary" href="/strefa-klienta">Strefa klienta</a>
+      </header>
+
+      <main class="layout">
+        <section class="hero">
+          <p class="eyebrow">Programista. Architekt. Operator wdrożeń.</p>
+          <h1>
+            Projekty dla biznesu
+            <span>budowane szybko, ale bez zgadywania.</span>
+          </h1>
+          <p class="lead">
+            Tworzę systemy wewnętrzne, automatyzacje, panele operacyjne i
+            narzędzia AI. Korzystam z vibe codingu tam, gdzie przyspiesza pracę,
+            ale kończę ją jak inżynier: przez test, kontrolę i wdrożenie.
+          </p>
+        </section>
+
+        <section class="grid">
+          <article class="card card-accent">
+            <h2>Co dowożę</h2>
+            <ul>
+              <li>panele administracyjne i fronty operacyjne</li>
+              <li>integracje API, kolejki, powiadomienia i telefonia</li>
+              <li>automatyzację procesów i narzędzia dla zespołów</li>
+              <li>wdrożenia AI do realnych zadań biznesowych</li>
+            </ul>
+          </article>
+
+          <article class="card">
+            <h2>Jak pracuję</h2>
+            <p>
+              Szybki prototyp nie jest dla mnie celem końcowym. Najpierw
+              upraszczam problem, potem buduję rozwiązanie, a na końcu domykam
+              jego działanie w infrastrukturze, logach i utrzymaniu.
+            </p>
+          </article>
+
+          <article class="card">
+            <h2>Vibe coding, ale z kontrolą</h2>
+            <p>
+              Sam termin opisuje pracę z modelami językowymi i naturalnym
+              językiem zamiast ręcznego pisania każdej linijki kodu.
+              W praktyce biznesowej ma to sens tylko wtedy, gdy za szybkością
+              idą testy, bezpieczeństwo i odpowiedzialność za wynik.
+            </p>
+            <div class="links">
+              <a href="https://pl.wikipedia.org/wiki/Vibe_coding" target="_blank" rel="noreferrer">Definicja</a>
+              <a href="https://vibe.pl/vibe-coding-programisci-ktorzy-czuja-vibe/" target="_blank" rel="noreferrer">Artykuł</a>
+            </div>
+          </article>
+        </section>
+
+        <section class="statement">
+          <div class="statement-label">Podejście</div>
+          <p>
+            Nie sprzedaję „AI dla AI”. Buduję rozwiązania, które skracają czas
+            obsługi, porządkują operacje i dają właścicielowi firmy realną
+            przewagę: mniej ręcznej pracy, mniej chaosu, szybsze decyzje.
+          </p>
+        </section>
+      </main>
+    </div>
+  </body>
+</html>

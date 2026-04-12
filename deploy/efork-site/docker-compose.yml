@@ -1,0 +1,9 @@
+services:
+  efork-site:
+    build: .
+    container_name: efork-site
+    restart: unless-stopped
+    ports:
+      - "3080:80"
+    volumes:
+      - ./data:/data

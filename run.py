@@ -43,17 +43,16 @@ def build_frontend():
     """Build the frontend."""
     frontend_dir = Path(__file__).parent / "frontend"
 
-    if not (frontend_dir / "node_modules").exists():
-        print("Installing frontend dependencies...")
-        result = subprocess.run(
-            ["npm", "ci"],
-            cwd=frontend_dir,
-            capture_output=True,
-            text=True
-        )
-        if result.returncode != 0:
-            print(f"Failed to install dependencies: {result.stderr}")
-            return False
+    print("Installing frontend dependencies with npm ci...")
+    result = subprocess.run(
+        ["npm", "ci"],
+        cwd=frontend_dir,
+        capture_output=True,
+        text=True
+    )
+    if result.returncode != 0:
+        print(f"Failed to install dependencies: {result.stderr}")
+        return False
 
     print("Building frontend...")
     result = subprocess.run(
@@ -76,7 +75,7 @@ def run_dev_server(host: str, port: int):
     import uvicorn
 
     print(f"\nStarting development server at http://{host}:{port}")
-    print("API documentation: http://{host}:{port}/api/docs")
+    print(f"API documentation: http://{host}:{port}/api/docs")
     print("Press Ctrl+C to stop\n")
 
     uvicorn.run(
@@ -158,6 +157,9 @@ def main():
     # Build frontend if requested or not built
     if args.build or (args.prod and not check_frontend_build()):
         if not build_frontend():
+            if args.prod:
+                print("Frontend build failed. Refusing to start production server.")
+                sys.exit(1)
             print("Warning: Frontend build failed. API will still work.")
 
     # Run server
